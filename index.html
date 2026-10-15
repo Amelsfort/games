@@ -8,11 +8,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+<script src="themes.js"></script>
 <style>
   :root {
     --bg: #0a1838; --bg2: #16306b; --fg: #f3f7ff; --muted: #b8c7ea;
     --accent: #ffcf40; --accent-ink: #3a2200; --card: rgba(255, 255, 255, 0.08);
-    --card-edge: rgba(255, 255, 255, 0.16);
+    --card-edge: rgba(255, 255, 255, 0.16); --accent-shadow: #b77900;
+    --glow1: rgba(80, 255, 190, 0.18); --glow2: rgba(150, 120, 255, 0.18);
     color-scheme: dark;
     box-sizing: border-box;
     padding-top: env(safe-area-inset-top, 0px);
@@ -23,25 +25,25 @@
   *, *::before, *::after { box-sizing: inherit; }
   html { min-height: 100%; }
   body {
-    min-height: 100vh; margin: 0; padding: 0 16px; overflow-x: hidden;
+    margin: 0; padding: 0 16px; overflow-x: hidden;
     color: var(--fg); font-family: "Nunito", "Trebuchet MS", system-ui, sans-serif;
     background:
-      radial-gradient(ellipse 80% 40% at 20% 0%, rgba(80, 255, 190, 0.18), transparent 70%),
-      radial-gradient(ellipse 70% 35% at 85% 5%, rgba(150, 120, 255, 0.18), transparent 70%),
+      radial-gradient(ellipse 80% 40% at 20% 0%, var(--glow1), transparent 70%),
+      radial-gradient(ellipse 70% 35% at 85% 5%, var(--glow2), transparent 70%),
       linear-gradient(var(--bg), var(--bg2));
     background-color: var(--bg);
   }
 
-  /* falling snow */
-  .snow { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 0; }
-  .snow i {
-    position: absolute; top: -12px; width: var(--s); height: var(--s); border-radius: 50%;
-    background: #fff; opacity: 0.8; animation: fall var(--d) linear var(--w) infinite;
+  /* theme decoration: sky (moon, bats…), falling particles (snow, leaves…); the looks come from themes.js */
+  .sky, .fx { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 0; }
+  .fx i {
+    position: absolute; top: -20px; width: var(--s); height: var(--s);
+    animation: fall var(--d) linear var(--w) infinite;
   }
   @keyframes fall { to { transform: translate(var(--x), 105vh); } }
-  @media (prefers-reduced-motion: reduce) { .snow { display: none; } }
+  @media (prefers-reduced-motion: reduce) { .fx { display: none; } }
 
-  /* snowy ground with pines */
+  /* landscape at the bottom */
   .ground {
     position: fixed; left: 0; right: 0; bottom: 0; height: 22vh; z-index: 0; pointer-events: none;
   }
@@ -49,7 +51,7 @@
 
   main {
     position: relative; z-index: 1; max-width: 860px; margin: 0 auto;
-    padding-block: clamp(32px, 8vh, 80px) calc(22vh + 24px);
+    padding-block: clamp(24px, 6vh, 64px) calc(12vh + 16px);
     text-align: center;
   }
   h1 {
@@ -59,7 +61,7 @@
   .sub { margin: 0.6em 0 0; color: var(--muted); font-size: clamp(1.05rem, 3vw, 1.3rem); font-weight: 700; }
 
   .games {
-    margin-top: clamp(28px, 6vh, 56px);
+    margin-top: clamp(20px, 4vh, 44px);
     display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 22px;
   }
   .game {
@@ -90,23 +92,28 @@
   }
   .play {
     margin-top: 10px; font-weight: 900; font-size: 1.15rem; color: var(--accent-ink);
-    background: var(--accent); border-radius: 999px; padding: 0.75em 1.6em; box-shadow: 0 4px 0 #b77900;
+    background: var(--accent); border-radius: 999px; padding: 0.75em 1.6em; box-shadow: 0 4px 0 var(--accent-shadow);
   }
+
+  /* theme picker: tucked in the top corner, so it doesn't make the page taller */
+  .themes {
+    position: fixed; top: calc(env(safe-area-inset-top, 0px) + 12px); right: 16px; z-index: 2;
+    display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px;
+    color: var(--muted); font-weight: 800;
+  }
+  @media (max-width: 760px) { .themes { position: static; margin-top: 24px; } }
+  .themes button {
+    font: 800 0.9rem/1 "Nunito", "Trebuchet MS", system-ui, sans-serif; color: var(--fg); cursor: pointer;
+    background: var(--card); border: 2px solid var(--card-edge); border-radius: 999px; padding: 0.55em 1em;
+  }
+  .themes button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .themes button:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
 </style>
 </head>
 <body>
-<div class="snow" aria-hidden="true"></div>
-<div class="ground" aria-hidden="true">
-  <svg viewBox="0 0 1000 200" preserveAspectRatio="none">
-    <g fill="#1f4a3a">
-      <polygon points="60,120 95,30 130,120"/><polygon points="120,130 150,55 180,130"/>
-      <polygon points="800,115 840,20 880,115"/><polygon points="870,125 900,60 930,125"/>
-      <polygon points="450,135 470,85 490,135"/>
-    </g>
-    <path d="M0,110 C200,80 350,140 520,115 C700,90 820,135 1000,105 L1000,200 L0,200 Z" fill="#e6eefa"/>
-    <path d="M0,150 C250,125 450,170 650,150 C820,135 900,160 1000,145 L1000,200 L0,200 Z" fill="#cfdcf2"/>
-  </svg>
-</div>
+<div class="sky" aria-hidden="true"></div>
+<div class="fx" aria-hidden="true"></div>
+<div class="ground" aria-hidden="true"></div>
 
 <main>
   <h1>Kies een spel ❄️</h1>
@@ -116,8 +123,8 @@
     <a class="game" href="wordgame.html">
       <div class="emoji">📚</div>
       <h2>Woorden</h2>
-      <p>Weet jij wat de woorden betekenen? Kies rustig of gooi sneeuwballen naar de sneeuwmonsters!</p>
-      <div class="tags"><span>Rustig</span><span>⛄ Monsters</span><span>🥽 VR</span></div>
+      <p id="wordDesc">Weet jij wat de woorden betekenen? Kies rustig of gooi sneeuwballen naar de sneeuwmonsters!</p>
+      <div class="tags"><span>Rustig</span><span id="monsterTag">⛄ Monsters</span><span>🥽 VR</span></div>
       <span class="play">Spelen ▶</span>
     </a>
     <a class="game" href="capitals.html">
@@ -128,20 +135,44 @@
       <span class="play">Spelen ▶</span>
     </a>
   </nav>
+
+  <div class="themes" role="group" aria-label="Thema">Thema:</div>
 </main>
 
 <script>
-  // a few snowflakes, each with its own size, speed and drift
-  const snow = document.querySelector('.snow');
-  for (let n = 0; n < 60; n++) {
-    const f = document.createElement('i');
+  const W = THEMA.words, page = THEMA.page;
+  document.querySelector('h1').textContent = W.heading;
+  document.getElementById('wordDesc').textContent = `Weet jij wat de woorden betekenen? Kies rustig of gooi ${W.balls} naar de ${W.monsters.toLowerCase()}!`;
+  document.getElementById('monsterTag').textContent = `${W.monsterIcon} Monsters`;
+  document.querySelector('link[rel="icon"]').href = `data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>${THEMA.icoon}</text></svg>`;
+
+  const css = document.createElement('style'); css.textContent = page.css; document.head.appendChild(css);
+  document.querySelector('.sky').innerHTML = page.sky;
+  document.querySelector('.ground').innerHTML = page.ground;
+
+  // falling particles, each with its own size, speed and drift
+  const fx = document.querySelector('.fx');
+  for (let n = 0; n < page.particles.count; n++) {
+    const p = page.particles.make(), f = document.createElement('i');
+    f.className = p.cls;
     f.style.left = Math.random() * 100 + 'vw';
-    f.style.setProperty('--s', (2 + Math.random() * 5).toFixed(1) + 'px');
-    f.style.setProperty('--d', (8 + Math.random() * 10).toFixed(1) + 's');
-    f.style.setProperty('--w', (-Math.random() * 18).toFixed(1) + 's');
-    f.style.setProperty('--x', (Math.random() * 80 - 40).toFixed(0) + 'px');
-    snow.appendChild(f);
+    f.style.setProperty('--s', p.size.toFixed(1) + 'px');
+    f.style.setProperty('--d', p.secs.toFixed(1) + 's');
+    f.style.setProperty('--w', (-Math.random() * p.secs).toFixed(1) + 's');
+    f.style.setProperty('--x', p.drift.toFixed(0) + 'px');
+    if (p.color) f.style.setProperty('--c', p.color);
+    fx.appendChild(f);
   }
+
+  // theme picker: the choice is remembered for the games too
+  const picker = document.querySelector('.themes'), chosen = gekozenThema();
+  [['auto', '📅 Automatisch']].concat(Object.keys(THEMAS).map(k => [k, `${THEMAS[k].icoon} ${THEMAS[k].naam}`])).forEach(([key, text]) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = text;
+    b.setAttribute('aria-pressed', String(key === (THEMAS[chosen] ? chosen : 'auto')));
+    b.addEventListener('click', () => { kiesThema(key); location.replace(location.pathname); });
+    picker.appendChild(b);
+  });
 </script>
 </body>
 </html>

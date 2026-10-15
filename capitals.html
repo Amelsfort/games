@@ -44,7 +44,7 @@
     font: 900 1.15rem/1 "Nunito", "Trebuchet MS", system-ui, sans-serif;
     color: var(--accent-ink); background: var(--accent);
     border: 0; border-radius: 999px; padding: 0.9em 1.6em;
-    box-shadow: 0 4px 0 #b77900; cursor: pointer;
+    box-shadow: 0 4px 0 var(--accent-shadow, #b77900); cursor: pointer;
   }
   #vr:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
   #vr[hidden] { display: none; }
@@ -67,6 +67,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="themes.js"></script>
 <script>
 /* =====================================================================
    EZELSBRUGGETJES AANPASSEN
@@ -122,6 +123,7 @@ logEvent('bezoek');
 
 function start() {
   const FONT = '"Nunito", "Trebuchet MS", system-ui, sans-serif';
+  const C = THEMA.ui;
   const DATA = [
     { land: 'Noorwegen',  stad: 'Oslo',       flag: 'no' },
     { land: 'Zweden',     stad: 'Stockholm',  flag: 'se' },
@@ -145,89 +147,8 @@ function start() {
   app.insertBefore(renderer.domElement, app.firstChild);
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0x0d1f4a, 18, 60);
   const camera = new THREE.PerspectiveCamera(60, 1, 0.05, 200);
-
-  scene.add(new THREE.HemisphereLight(0xc4d8ff, 0x2a3656, 0.95));
-  const sun = new THREE.DirectionalLight(0xe8f0ff, 0.55);
-  sun.position.set(4, 10, 2);
-  scene.add(sun);
-
-  // sky
-  (function () {
-    const c = document.createElement('canvas'); c.width = 8; c.height = 256;
-    const x = c.getContext('2d');
-    const g = x.createLinearGradient(0, 0, 0, 256);
-    g.addColorStop(0, '#040a22'); g.addColorStop(0.45, '#0c1d4c'); g.addColorStop(0.5, '#1a3a78'); g.addColorStop(1, '#1a3a78');
-    x.fillStyle = g; x.fillRect(0, 0, 8, 256);
-    const sky = new THREE.Mesh(new THREE.SphereGeometry(80, 32, 16),
-      new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), side: THREE.BackSide, fog: false }));
-    scene.add(sky);
-  })();
-
-  // stars
-  (function () {
-    const n = 700, p = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) {
-      const th = Math.random() * Math.PI * 2, ph = Math.random() * Math.PI * 0.45;
-      p[i*3] = 70 * Math.sin(ph) * Math.cos(th); p[i*3+1] = 70 * Math.cos(ph) + 2; p[i*3+2] = 70 * Math.sin(ph) * Math.sin(th);
-    }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3));
-    scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0xffffff, size: 0.35, fog: false })));
-  })();
-
-  // aurora ribbons
-  const auroras = [];
-  (function () {
-    const c = document.createElement('canvas'); c.width = 256; c.height = 64;
-    const x = c.getContext('2d');
-    const g = x.createLinearGradient(0, 0, 0, 64);
-    g.addColorStop(0, 'rgba(120,90,255,0)'); g.addColorStop(0.35, 'rgba(110,140,255,0.5)');
-    g.addColorStop(0.7, 'rgba(80,255,170,0.95)'); g.addColorStop(1, 'rgba(80,255,170,0)');
-    x.fillStyle = g; x.fillRect(0, 0, 256, 64);
-    x.globalCompositeOperation = 'destination-in';
-    const h = x.createLinearGradient(0, 0, 256, 0);
-    h.addColorStop(0, 'rgba(0,0,0,0)'); h.addColorStop(0.2, 'rgba(0,0,0,1)'); h.addColorStop(0.8, 'rgba(0,0,0,1)'); h.addColorStop(1, 'rgba(0,0,0,0)');
-    x.fillStyle = h; x.fillRect(0, 0, 256, 64);
-    const tex = new THREE.CanvasTexture(c);
-    [[0, 17, -34, 0], [-30, 20, -12, Math.PI / 2.6], [28, 19, -16, -Math.PI / 2.8]].forEach(([px, py, pz, ry], i) => {
-      const geo = new THREE.PlaneGeometry(50, 12, 60, 1);
-      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
-      m.position.set(px, py, pz); m.rotation.y = ry;
-      m.userData.base = geo.attributes.position.array.slice(); m.userData.phase = i * 2.1;
-      scene.add(m); auroras.push(m);
-    });
-  })();
-
-  // snowy ground + pines
-  const ground = new THREE.Mesh(new THREE.CircleGeometry(60, 64), new THREE.MeshLambertMaterial({ color: 0xe6eefa }));
-  ground.rotation.x = -Math.PI / 2; scene.add(ground);
-  (function () {
-    const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5a3b24 });
-    const leafMat = new THREE.MeshLambertMaterial({ color: 0x1f5a45 });
-    const snowMat = new THREE.MeshLambertMaterial({ color: 0xf4f8ff });
-    for (let i = 0; i < 46; i++) {
-      const a = Math.random() * Math.PI * 2, r = 7 + Math.random() * 22, s = 0.8 + Math.random() * 1.3;
-      const t = new THREE.Group();
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1 * s, 0.13 * s, 0.6 * s, 6), trunkMat);
-      trunk.position.y = 0.3 * s; t.add(trunk);
-      for (let k = 0; k < 3; k++) {
-        const cone = new THREE.Mesh(new THREE.ConeGeometry((0.9 - k * 0.22) * s, 1.1 * s, 8), leafMat);
-        cone.position.y = (0.9 + k * 0.62) * s; t.add(cone);
-      }
-      const cap = new THREE.Mesh(new THREE.ConeGeometry(0.28 * s, 0.35 * s, 8), snowMat);
-      cap.position.y = 2.4 * s; t.add(cap);
-      t.position.set(Math.cos(a) * r, 0, Math.sin(a) * r); t.rotation.y = Math.random() * 6;
-      scene.add(t);
-    }
-  })();
-
-  // snowfall
-  const SNOW = 500;
-  const snowPos = new Float32Array(SNOW * 3);
-  for (let i = 0; i < SNOW; i++) { snowPos[i*3] = (Math.random() - 0.5) * 30; snowPos[i*3+1] = Math.random() * 12; snowPos[i*3+2] = (Math.random() - 0.5) * 30; }
-  const snowGeo = new THREE.BufferGeometry(); snowGeo.setAttribute('position', new THREE.BufferAttribute(snowPos, 3));
-  scene.add(new THREE.Points(snowGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.05, transparent: true, opacity: 0.85 })));
+  const updateScenery = THEMA.scene(THREE, scene);   // sky, ground and weather come from themes.js
 
   // ---------- canvas helpers ----------
   function rr(ctx, x, y, w, h, r) {
@@ -278,8 +199,8 @@ function start() {
       ctx.lineTo(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad);
     }
     ctx.closePath();
-    ctx.fillStyle = filled ? '#ffcf40' : 'rgba(255,255,255,0.12)'; ctx.fill();
-    ctx.lineWidth = 5; ctx.strokeStyle = filled ? '#fff1b8' : 'rgba(255,255,255,0.35)'; ctx.stroke();
+    ctx.fillStyle = filled ? C.accent : 'rgba(255,255,255,0.12)'; ctx.fill();
+    ctx.lineWidth = 5; ctx.strokeStyle = filled ? C.accentLight : 'rgba(255,255,255,0.35)'; ctx.stroke();
   }
 
   const interactive = [];
@@ -292,10 +213,7 @@ function start() {
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, fog: false }));
     return { mesh, c, ctx, tex, update() { tex.needsUpdate = true; } };
   }
-  const BTN_COLORS = {
-    idle: ['#5a95ff', '#2a5bdb'], good: ['#46e591', '#16a058'], bad: ['#ff7477', '#cc2d33'],
-    dim: ['#56627f', '#394360'], start: ['#ffd65a', '#f29d0b']
-  };
+  const BTN_COLORS = C.btn;
   function makeButton(w, h) {
     const p = canvasPlane(w, h, 512);
     p.enabled = true; p.state = 'idle'; p.mesh.userData.btn = p;
@@ -308,7 +226,7 @@ function start() {
       ctx.fillStyle = g; rr(ctx, 8, 6, c.width - 16, c.height - 22, 42); ctx.fill();
       ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 5; ctx.stroke();
       fit(ctx, label, c.width - 80, 68, 900);
-      ctx.fillStyle = state === 'start' ? '#3a2200' : '#ffffff';
+      ctx.fillStyle = state === 'start' ? C.startInk : '#ffffff';
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(label, c.width / 2, (c.height - 16) / 2 + 4);
       this.update();
@@ -358,26 +276,26 @@ function start() {
     const w = ctx.measureText(text).width + 24;
     let lx = Math.min(Math.max(x - w / 2, 8), 1016 - w), ly = y - 58;
     if (ly < 8) ly = y + 22;
-    ctx.fillStyle = 'rgba(8,20,52,0.9)'; rr(ctx, lx, ly, w, 42, 12); ctx.fill();
+    ctx.fillStyle = C.panel; rr(ctx, lx, ly, w, 42, 12); ctx.fill();
     ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.stroke();
     ctx.fillStyle = '#ffffff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(text, lx + 12, ly + 22);
   }
   function drawMap() {
-    const { ctx, c } = M, cityMode = curDir === 'kaart-hoofdstad';
+    const { ctx, c } = M, cityMode = curDir === 'kaart-hoofdstad', MC = C.map;
     ctx.clearRect(0, 0, c.width, c.height);
     ctx.save(); rr(ctx, 4, 4, c.width - 8, c.height - 8, 30); ctx.clip();
-    ctx.fillStyle = '#12306a'; ctx.fillRect(0, 0, c.width, c.height);
+    ctx.fillStyle = MC.sea; ctx.fillRect(0, 0, c.width, c.height);
     ctx.lineJoin = 'round';
-    otherPaths.forEach(pth => { ctx.fillStyle = '#3a4868'; ctx.fill(pth, 'evenodd'); ctx.strokeStyle = '#5b6b90'; ctx.lineWidth = 1.5; ctx.stroke(pth); });
+    otherPaths.forEach(pth => { ctx.fillStyle = MC.other; ctx.fill(pth, 'evenodd'); ctx.strokeStyle = MC.otherEdge; ctx.lineWidth = 1.5; ctx.stroke(pth); });
     for (const f in quizPaths) {
-      let col = '#e3ebf7';
+      let col = MC.land;
       if (!cityMode) {
         if (f === mapState.good) col = '#46e591';
         else if (f === mapState.bad) col = '#ff7477';
-        else if (f === mapState.hover) col = '#ffe28a';
+        else if (f === mapState.hover) col = MC.hover;
       }
       ctx.fillStyle = col; ctx.fill(quizPaths[f], 'evenodd');
-      ctx.strokeStyle = '#1b2d57'; ctx.lineWidth = 2; ctx.stroke(quizPaths[f]);
+      ctx.strokeStyle = MC.border; ctx.lineWidth = 2; ctx.stroke(quizPaths[f]);
     }
     if (cityMode) {
       for (const f in CAPS) {
@@ -385,44 +303,44 @@ function start() {
         let r = 11, col = '#ffffff';
         if (f === mapState.good) { r = 16; col = '#46e591'; }
         else if (f === mapState.bad) { r = 15; col = '#ff7477'; }
-        else if (f === mapState.hover) { r = 15; col = '#ffcf40'; }
+        else if (f === mapState.hover) { r = 15; col = C.accent; }
         ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = col; ctx.fill();
-        ctx.lineWidth = 4; ctx.strokeStyle = '#12306a'; ctx.stroke();
+        ctx.lineWidth = 4; ctx.strokeStyle = MC.sea; ctx.stroke();
       }
     }
     // after answering, name what was tapped and what was asked
     const show = (f, col) => {
       const d = DATA[byFlag[f]], [x, y] = CAPS[f];
-      if (!cityMode) { ctx.beginPath(); ctx.arc(x, y, 9, 0, Math.PI * 2); ctx.fillStyle = '#12306a'; ctx.fill(); }
+      if (!cityMode) { ctx.beginPath(); ctx.arc(x, y, 9, 0, Math.PI * 2); ctx.fillStyle = MC.sea; ctx.fill(); }
       mapLabel(ctx, `${d.land}: ${d.stad}`, x, y, col);
     };
     if (mapState.bad) show(mapState.bad, '#ff7477');
     if (mapState.good) show(mapState.good, '#46e591');
     ctx.restore();
-    ctx.strokeStyle = 'rgba(160,200,255,0.6)'; ctx.lineWidth = 6; rr(ctx, 4, 4, c.width - 8, c.height - 8, 30); ctx.stroke();
+    ctx.strokeStyle = C.edge; ctx.lineWidth = 6; rr(ctx, 4, 4, c.width - 8, c.height - 8, 30); ctx.stroke();
     M.update();
   }
   function drawPrompt(fb) {
     const { ctx, c } = P, d = DATA[cur], cityMode = curDir === 'kaart-hoofdstad'; panelBg(ctx, c, 40);
     ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
     if (!fb) {
-      ctx.fillStyle = '#b8c7ea'; ctx.font = `700 40px ${FONT}`;
+      ctx.fillStyle = C.muted; ctx.font = `700 40px ${FONT}`;
       ctx.fillText(cityMode ? 'Tik op de stip van de hoofdstad' : 'Tik op de kaart op het land', 512, 72);
       const big = cityMode ? d.stad : d.land;
-      ctx.fillStyle = '#ffcf40'; fit(ctx, big, 900, 84, 900); ctx.fillText(big, 512, 160);
+      ctx.fillStyle = C.accent; fit(ctx, big, 900, 84, 900); ctx.fillText(big, 512, 160);
     } else {
       ctx.fillStyle = fb.good ? '#5cf0a0' : '#ff9a9d'; fit(ctx, fb.title, 920, 54, 900); ctx.fillText(fb.title, 512, 80);
       const h = (hints[d.flag] || '').trim();
       const line = h ? '💡 ' + h : (cityMode ? `${d.stad} → ${d.land}` : `${d.land} → ${d.stad}`);
-      ctx.fillStyle = '#fff3c4'; fit(ctx, line, 920, 42, 700); ctx.fillText(line, 512, 152);
+      ctx.fillStyle = C.tip; fit(ctx, line, 920, 42, 700); ctx.fillText(line, 512, 152);
     }
     P.update();
   }
 
   function panelBg(ctx, c, r) {
     ctx.clearRect(0, 0, c.width, c.height);
-    ctx.fillStyle = 'rgba(8,20,52,0.9)'; rr(ctx, 6, 6, c.width - 12, c.height - 12, r); ctx.fill();
-    ctx.strokeStyle = 'rgba(160,200,255,0.6)'; ctx.lineWidth = 6; ctx.stroke();
+    ctx.fillStyle = C.panel; rr(ctx, 6, 6, c.width - 12, c.height - 12, r); ctx.fill();
+    ctx.strokeStyle = C.edge; ctx.lineWidth = 6; ctx.stroke();
   }
   function drawScore() {
     const { ctx, c } = S; panelBg(ctx, c, 60);
@@ -437,13 +355,13 @@ function start() {
   function drawStart() {
     const { ctx, c } = Q; panelBg(ctx, c, 44);
     ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = '#ffcf40'; fit(ctx, 'Hoofdsteden', c.width - 120, 112, 900); ctx.fillText('Hoofdsteden', 512, 140);
+    ctx.fillStyle = C.accent; fit(ctx, 'Hoofdsteden', c.width - 120, 112, 900); ctx.fillText('Hoofdsteden', 512, 140);
     ctx.fillStyle = '#ffffff'; ctx.font = `800 54px ${FONT}`; ctx.fillText('van Noord-Europa', 512, 212);
     const fw = 96, gap = 18, x0 = (1024 - (8 * fw + 7 * gap)) / 2;
     DATA.forEach((d, i) => drawFlag(ctx, d.flag, x0 + i * (fw + gap), 250, fw, 64));
-    ctx.fillStyle = '#dfe8ff'; ctx.font = `700 42px ${FONT}`;
+    ctx.fillStyle = C.text; ctx.font = `700 42px ${FONT}`;
     ctx.fillText('Weet jij bij elk land de hoofdstad?', 512, 395);
-    ctx.fillStyle = '#b8c7ea'; ctx.font = `700 38px ${FONT}`;
+    ctx.fillStyle = C.muted; ctx.font = `700 38px ${FONT}`;
     ctx.fillText(best ? `Beste score: ${best} punten` : 'Wie haalt er 3 sterren?', 512, 460);
     Q.update();
   }
@@ -464,20 +382,20 @@ function start() {
     if (toLand && !fb) drawPin(ctx, 165, 128);
     else drawFlag(ctx, d.flag, 60, 58, 210, 140);
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = '#b8c7ea';
+    ctx.fillStyle = C.muted;
     const ask = toLand ? 'Van welk land is dit de hoofdstad?' : 'Wat is de hoofdstad van';
     fit(ctx, ask, 1024 - 312 - 50, 46, 700); ctx.fillText(ask, 312, 108);
     const big = toLand ? d.stad : d.land + '?';
-    ctx.fillStyle = '#ffcf40'; fit(ctx, big, 1024 - 312 - 50, 100, 900); ctx.fillText(big, 312, 196);
-    ctx.strokeStyle = 'rgba(160,200,255,0.3)'; ctx.lineWidth = 3;
+    ctx.fillStyle = C.accent; fit(ctx, big, 1024 - 312 - 50, 100, 900); ctx.fillText(big, 312, 196);
+    ctx.strokeStyle = C.line; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(60, 250); ctx.lineTo(964, 250); ctx.stroke();
     ctx.textAlign = 'center';
     if (!fb) {
-      ctx.fillStyle = '#dfe8ff'; ctx.font = `700 46px ${FONT}`; ctx.fillText('Kies het goede antwoord 👇', 512, 370);
+      ctx.fillStyle = C.text; ctx.font = `700 46px ${FONT}`; ctx.fillText('Kies het goede antwoord 👇', 512, 370);
     } else {
       ctx.fillStyle = fb.good ? '#5cf0a0' : '#ff9a9d';
       fit(ctx, fb.title, 900, 58, 900); ctx.fillText(fb.title, 512, 325);
-      ctx.fillStyle = '#fff3c4'; ctx.font = `700 42px ${FONT}`;
+      ctx.fillStyle = C.tip; ctx.font = `700 42px ${FONT}`;
       const h = (hints[d.flag] || '').trim();
       if (h) wrap(ctx, '💡 ' + h, 880).slice(0, 3).forEach((l, i) => ctx.fillText(l, 512, 400 + i * 52));
       else { ctx.font = `800 54px ${FONT}`; ctx.fillText(toLand ? `${d.stad} → ${d.land}` : `${d.land} → ${d.stad}`, 512, 430); }
@@ -488,12 +406,12 @@ function start() {
     const { ctx, c } = Q; panelBg(ctx, c, 44);
     const stars = firstRight === total ? 3 : firstRight >= Math.ceil(total * 0.75) ? 2 : 1;
     ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = '#ffcf40'; ctx.font = `900 96px ${FONT}`; ctx.fillText('Klaar! 🎉', 512, 125);
+    ctx.fillStyle = C.accent; ctx.font = `900 96px ${FONT}`; ctx.fillText('Klaar! 🎉', 512, 125);
     [362, 512, 662].forEach((x, i) => starShape(ctx, x, 215, 56, i < stars));
     ctx.fillStyle = '#ffffff'; ctx.font = `800 52px ${FONT}`; ctx.fillText(`${firstRight} van ${total} meteen goed`, 512, 345);
-    ctx.fillStyle = '#b8c7ea'; ctx.font = `700 42px ${FONT}`;
+    ctx.fillStyle = C.muted; ctx.font = `700 42px ${FONT}`;
     ctx.fillText(newBest ? `${score} punten, nieuw record! 🏆` : `${score} punten (beste: ${best})`, 512, 412);
-    ctx.fillStyle = '#dfe8ff'; ctx.font = `700 40px ${FONT}`;
+    ctx.fillStyle = C.text; ctx.font = `700 40px ${FONT}`;
     ctx.fillText(stars === 3 ? 'Wauw, jij kent ze allemaal!' : stars === 2 ? 'Heel goed! Lukt 3 sterren ook?' : 'Goed geoefend! Nog een keer?', 512, 485);
     Q.update();
   }
@@ -641,7 +559,7 @@ function start() {
   // ---------- confetti ----------
   const parts = [];
   const partGeo = new THREE.OctahedronGeometry(0.022);
-  const partMats = [0xffcf40, 0x46e591, 0xffffff, 0x7fb2ff, 0xff8fb1].map(c => new THREE.MeshBasicMaterial({ color: c, transparent: true, fog: false }));
+  const partMats = C.confetti.map(c => new THREE.MeshBasicMaterial({ color: c, transparent: true, fog: false }));
   function burst(obj) {
     const p = new THREE.Vector3();
     if (obj && obj.isVector3) p.copy(obj); else obj.getWorldPosition(p);
@@ -674,7 +592,7 @@ function start() {
   for (let i = 0; i < 2; i++) {
     const c = renderer.xr.getController(i);
     const lineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]);
-    const line = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: 0x9fd3ff, transparent: true, opacity: 0.8 }));
+    const line = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: C.ray, transparent: true, opacity: 0.8 }));
     line.scale.z = 4; c.add(line);
     const dot = new THREE.Mesh(new THREE.SphereGeometry(0.015, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false }));
     dot.visible = false; scene.add(dot);
@@ -700,9 +618,9 @@ function start() {
     // ---------- snowballs (VR only) ----------
   const snowballs = [];
   const ballGeo = new THREE.SphereGeometry(0.035, 16, 12);
-  const ballMat = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x334466 });
+  const ballMat = new THREE.MeshLambertMaterial({ color: C.ball, emissive: C.ballGlow });
   const puffGeo = new THREE.IcosahedronGeometry(0.018, 0);
-  const puffMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, fog: false });
+  const puffMats = C.puff.map(c => new THREE.MeshBasicMaterial({ color: c, transparent: true, fog: false }));
   // a snowball only answers the question that was showing when it was thrown
   const stateKey = () => `${phase}|${curId}|${solved}|${queue.length}`;
 
@@ -721,7 +639,7 @@ function start() {
   }
   function snowPuff(point) {
     for (let i = 0; i < 16; i++) {
-      const m = new THREE.Mesh(puffGeo, puffMat.clone());
+      const m = new THREE.Mesh(puffGeo, puffMats[i % puffMats.length].clone());
       m.position.copy(point);
       m.userData.v = new THREE.Vector3((Math.random() - 0.5) * 1.6, Math.random() * 1.2, (Math.random() - 0.2) * 1.2);
       m.userData.life = 0.7; scene.add(m); parts.push(m);
@@ -878,25 +796,7 @@ function start() {
       if (p.userData.life <= 0) { scene.remove(p); p.material.dispose(); parts.splice(i, 1); }
     }
 
-    // snow
-    const sp = snowGeo.attributes.position.array;
-    for (let i = 0; i < SNOW; i++) {
-      sp[i*3+1] -= dt * (0.35 + (i % 7) * 0.05);
-      sp[i*3] += Math.sin(t * 0.8 + i) * dt * 0.08;
-      if (sp[i*3+1] < 0) sp[i*3+1] = 12;
-    }
-    snowGeo.attributes.position.needsUpdate = true;
-
-    // aurora wave
-    auroras.forEach(m => {
-      const pos = m.geometry.attributes.position, base = m.userData.base;
-      for (let i = 0; i < pos.count; i++) {
-        const x = base[i*3];
-        pos.array[i*3+2] = Math.sin(x * 0.14 + t * 0.5 + m.userData.phase) * 3 + Math.sin(x * 0.05 + t * 0.2) * 2;
-      }
-      pos.needsUpdate = true;
-      m.material.opacity = 0.65 + Math.sin(t * 0.6 + m.userData.phase) * 0.25;
-    });
+    updateScenery(dt, t);
 
     renderer.render(scene, camera);
     updateSnowballs(dt);
