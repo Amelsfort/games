@@ -1,0 +1,40 @@
+{
+  "name": "Game Dev Container",
+  "image": "mcr.microsoft.com/devcontainers/dotnet",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/${localWorkspaceFolderBasename},type=bind,consistency=cached",
+  "mounts": [
+    "source=${localWorkspaceFolder}/.git,target=${containerWorkspaceFolder}/.git,type=bind,readonly",
+    "source=${localWorkspaceFolder}/.devcontainer,target=${containerWorkspaceFolder}/.devcontainer,type=bind,readonly",
+    "source=llm-workspace,target=/workspaces/llm-shared,type=volume,readonly=true"
+  ],
+  "postCreateCommand": {
+    "git-config": "git config --global --add safe.directory ${containerWorkspaceFolder} && git config --global core.autocrlf true",
+    "claude-install": "curl -fsSL https://claude.ai/install.sh | bash"
+  },
+  "postStartCommand": {
+    "claude-link": "ln -sfn /workspaces/llm-shared/.claude ${containerWorkspaceFolder}/.claude"
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/dotnet:2": {
+      "version": "10.0"
+    }
+  },
+  "runArgs": ["--name=dev-${localWorkspaceFolderBasename}"],
+  "remoteEnv": {
+    "PATH": "${containerEnv:PATH}:/home/vscode/.local/bin",
+    "DOTNET_CLI_TELEMETRY_OPTOUT": "1",
+    "FEED_ACCESSTOKEN": "${localEnv:NPM_AUTH_TOKEN}"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-dotnettools.csdevkit"
+      ],
+      "settings": {
+        "git.autofetch": false
+      }
+    }
+  },
+  "remoteUser": "vscode"
+}

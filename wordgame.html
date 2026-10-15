@@ -1,0 +1,845 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Woorden oefenen</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a1838; --fg: #f3f7ff; --muted: #b8c7ea;
+    --accent: #ffcf40; --accent-ink: #3a2200; --chip: rgba(8, 20, 52, 0.78);
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #060f26; --chip: rgba(4, 12, 34, 0.82); } }
+  :root[data-theme="dark"] { --bg: #060f26; --chip: rgba(4, 12, 34, 0.82); }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); height: 100%; }
+  *, *::before, *::after { box-sizing: inherit; }
+  body { height: 100%; margin: 0; overflow: hidden; background: var(--bg); color: var(--fg);
+    font-family: "Nunito", "Trebuchet MS", system-ui, sans-serif; }
+  #app { position: relative; width: 100%; height: 100%; }
+  #app canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  #hud { position: absolute; left: 0; right: 0; bottom: 0; padding: 14px 16px 18px;
+    display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+  #vr { pointer-events: auto; font: 900 1.15rem/1 "Nunito", "Trebuchet MS", system-ui, sans-serif;
+    color: var(--accent-ink); background: var(--accent); border: 0; border-radius: 999px;
+    padding: 0.9em 1.6em; box-shadow: 0 4px 0 #b77900; cursor: pointer; }
+  #vr:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+  #vr[hidden] { display: none; }
+  #note { pointer-events: auto; margin: 0; max-width: 34rem; text-align: center; font-size: 0.95rem;
+    line-height: 1.4; color: var(--muted); background: var(--chip); padding: 0.5em 0.9em; border-radius: 12px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <button id="vr" hidden>🥽 Speel in VR</button>
+    <p id="note">Laden…</p>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="woordenlijsten.js"></script>
+<script>
+/* =====================================================================
+   DE WOORDENLIJSTEN staan in het bestand woordenlijsten.js, naast dit bestand.
+   Daar kun je lijsten toevoegen, aanpassen en kiezen welke standaard opent.
+   Hieronder staan alleen de spelinstellingen.
+   ===================================================================== */
+
+/* Hoeveel vragen per spel? 0 = elk woord één keer. Fout beantwoorde vragen komen
+   daarna nog een keer terug; die tellen niet extra mee. */
+const AANTAL_VRAGEN = 0;
+
+/* Welke soorten vragen? Haal een regel weg om die soort uit te zetten. */
+const VRAAGSOORTEN = [
+  'woord-naar-betekenis',   // "Wat betekent nauwkeurig?"  → kies de betekenis
+  'betekenis-naar-woord'    // "Welk woord betekent: heel precies?" → kies het woord
+];
+
+/* Monsters-modus: sneeuwmonsters met de antwoorden lopen op je af; raak het goede!
+   MONSTER_SNELHEID: 1 = normaal, 0.7 = rustiger, 1.4 = sneller.
+   LEVENS: hoe vaak een monster je mag bereiken voordat het spel voorbij is. */
+const MONSTER_SNELHEID = 1;
+const LEVENS = 3;
+
+/* Bezoeken en scores bijhouden in je Google Sheet: plak hier dezelfde /exec-link
+   als bij het hoofdstedenspel (of laat leeg). */
+const LOG_URL = 'https://script.google.com/macros/s/AKfycbwhsoE5YmSI8VH3hGZWrVssg2E4-1nP4ra5avCC7Hq3ytZ0p-3ZS7oY9imA7EJ5hinh/exec';
+function logEvent(e, extra) {
+  if (!LOG_URL) return;
+  const ua = navigator.userAgent;
+  const d = /OculusBrowser|Quest/i.test(ua) ? 'Quest' : /Mobi|Android|iPhone|iPad/i.test(ua) ? 'Mobiel' : 'Computer';
+  const q = new URLSearchParams(Object.assign({ g: 'woorden', e, d }, extra || {}));
+  fetch(LOG_URL + '?' + q, { mode: 'no-cors' }).catch(() => {});
+}
+logEvent('bezoek');
+</script>
+<script>
+(async function () {
+  try {
+    await Promise.all([document.fonts.load('900 64px Nunito'), document.fonts.load('800 48px Nunito'), document.fonts.load('700 40px Nunito')]);
+  } catch (e) {}
+  start();
+})();
+
+function start() {
+  const FONT = '"Nunito", "Trebuchet MS", system-ui, sans-serif';
+  const LISTS = (typeof WOORDENLIJSTEN === 'object' && WOORDENLIJSTEN) ? WOORDENLIJSTEN : {};
+  const LIST_KEYS = Object.keys(LISTS).filter(k => LISTS[k] && Array.isArray(LISTS[k].woorden));
+  const cleanWords = arr => arr
+    .filter(w => w && String(w.woord || '').trim() && String(w.betekenis || '').trim())
+    .map(w => ({ woord: String(w.woord).trim(), betekenis: String(w.betekenis).trim(), tip: String(w.tip || '').trim() }));
+  let DATA = [], NOPT = 0, TITEL = 'Woorden', listIdx = 0;
+  const listName = () => LIST_KEYS[listIdx] || '';
+  function useList(i) {
+    if (!LIST_KEYS.length) return;
+    listIdx = ((i % LIST_KEYS.length) + LIST_KEYS.length) % LIST_KEYS.length;
+    const L = LISTS[LIST_KEYS[listIdx]];
+    DATA = cleanWords(L.woorden); NOPT = Math.min(4, DATA.length);
+    TITEL = String(L.titel || LIST_KEYS[listIdx]);
+    try { localStorage.setItem('woorden-lijst', LIST_KEYS[listIdx]); } catch (e) {}
+    loadBest();
+  }
+  function startList() {
+    const want = new URLSearchParams(location.search).get('lijst');
+    let stored = null; try { stored = localStorage.getItem('woorden-lijst'); } catch (e) {}
+    const std = typeof STANDAARD_LIJST === 'string' ? STANDAARD_LIJST : null;
+    const pick = [want, std && !want ? std : null, stored, LIST_KEYS[LIST_KEYS.length - 1]].find(k => k && LIST_KEYS.includes(k));
+    useList(Math.max(0, LIST_KEYS.indexOf(pick)));
+  }
+
+  const app = document.getElementById('app');
+  const vrBtn = document.getElementById('vr');
+  const note = document.getElementById('note');
+
+  // ---------- renderer / scene ----------
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.xr.enabled = true;
+  renderer.xr.setReferenceSpaceType('local-floor');
+  app.insertBefore(renderer.domElement, app.firstChild);
+
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(0x0d1f4a, 18, 60);
+  const camera = new THREE.PerspectiveCamera(60, 1, 0.05, 200);
+  scene.add(new THREE.HemisphereLight(0xc4d8ff, 0x2a3656, 0.95));
+  const sun = new THREE.DirectionalLight(0xe8f0ff, 0.55); sun.position.set(4, 10, 2); scene.add(sun);
+
+  (function () {
+    const c = document.createElement('canvas'); c.width = 8; c.height = 256;
+    const x = c.getContext('2d'), g = x.createLinearGradient(0, 0, 0, 256);
+    g.addColorStop(0, '#040a22'); g.addColorStop(0.45, '#0c1d4c'); g.addColorStop(0.5, '#1a3a78'); g.addColorStop(1, '#1a3a78');
+    x.fillStyle = g; x.fillRect(0, 0, 8, 256);
+    scene.add(new THREE.Mesh(new THREE.SphereGeometry(80, 32, 16), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), side: THREE.BackSide, fog: false })));
+    const n = 700, p = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { const th = Math.random() * 6.283, ph = Math.random() * 1.41; p[i*3] = 70 * Math.sin(ph) * Math.cos(th); p[i*3+1] = 70 * Math.cos(ph) + 2; p[i*3+2] = 70 * Math.sin(ph) * Math.sin(th); }
+    const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(p, 3));
+    scene.add(new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xffffff, size: 0.35, fog: false })));
+  })();
+
+  const auroras = [];
+  (function () {
+    const c = document.createElement('canvas'); c.width = 256; c.height = 64;
+    const x = c.getContext('2d'), g = x.createLinearGradient(0, 0, 0, 64);
+    g.addColorStop(0, 'rgba(120,90,255,0)'); g.addColorStop(0.35, 'rgba(110,140,255,0.5)'); g.addColorStop(0.7, 'rgba(80,255,170,0.95)'); g.addColorStop(1, 'rgba(80,255,170,0)');
+    x.fillStyle = g; x.fillRect(0, 0, 256, 64); x.globalCompositeOperation = 'destination-in';
+    const h = x.createLinearGradient(0, 0, 256, 0); h.addColorStop(0, 'rgba(0,0,0,0)'); h.addColorStop(0.2, '#000'); h.addColorStop(0.8, '#000'); h.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = h; x.fillRect(0, 0, 256, 64);
+    const tex = new THREE.CanvasTexture(c);
+    [[0, 17, -34, 0], [-30, 20, -12, Math.PI / 2.6], [28, 19, -16, -Math.PI / 2.8]].forEach(([px, py, pz, ry], i) => {
+      const geo = new THREE.PlaneGeometry(50, 12, 60, 1);
+      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+      m.position.set(px, py, pz); m.rotation.y = ry; m.userData.base = geo.attributes.position.array.slice(); m.userData.phase = i * 2.1;
+      scene.add(m); auroras.push(m);
+    });
+  })();
+
+  const ground = new THREE.Mesh(new THREE.CircleGeometry(60, 64), new THREE.MeshLambertMaterial({ color: 0xe6eefa }));
+  ground.rotation.x = -Math.PI / 2; scene.add(ground);
+  (function () {
+    const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5a3b24 }), leafMat = new THREE.MeshLambertMaterial({ color: 0x1f5a45 }), snowMat = new THREE.MeshLambertMaterial({ color: 0xf4f8ff });
+    for (let i = 0; i < 46; i++) {
+      const a = Math.random() * 6.283, r = 7 + Math.random() * 22, s = 0.8 + Math.random() * 1.3, t = new THREE.Group();
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1 * s, 0.13 * s, 0.6 * s, 6), trunkMat); trunk.position.y = 0.3 * s; t.add(trunk);
+      for (let k = 0; k < 3; k++) { const cone = new THREE.Mesh(new THREE.ConeGeometry((0.9 - k * 0.22) * s, 1.1 * s, 8), leafMat); cone.position.y = (0.9 + k * 0.62) * s; t.add(cone); }
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(0.28 * s, 0.35 * s, 8), snowMat); cap.position.y = 2.4 * s; t.add(cap);
+      t.position.set(Math.cos(a) * r, 0, Math.sin(a) * r); t.rotation.y = Math.random() * 6; scene.add(t);
+    }
+  })();
+
+  const SNOW = 500, snowPos = new Float32Array(SNOW * 3);
+  for (let i = 0; i < SNOW; i++) { snowPos[i*3] = (Math.random() - 0.5) * 30; snowPos[i*3+1] = Math.random() * 12; snowPos[i*3+2] = (Math.random() - 0.5) * 30; }
+  const snowGeo = new THREE.BufferGeometry(); snowGeo.setAttribute('position', new THREE.BufferAttribute(snowPos, 3));
+  scene.add(new THREE.Points(snowGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.05, transparent: true, opacity: 0.85 })));
+
+  // ---------- canvas helpers ----------
+  function rr(ctx, x, y, w, h, r) {
+    ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+  function fit(ctx, text, maxW, size, weight) {
+    let s = size;
+    do { ctx.font = `${weight} ${s}px ${FONT}`; if (ctx.measureText(text).width <= maxW) break; s -= 2; } while (s > 14);
+    return s;
+  }
+  function wrap(ctx, text, maxW) {
+    const words = text.split(' '), lines = []; let line = '';
+    words.forEach(w => { const t = line ? line + ' ' + w : w; if (ctx.measureText(t).width > maxW && line) { lines.push(line); line = w; } else line = t; });
+    if (line) lines.push(line); return lines;
+  }
+  // text in at most `maxLines` lines, shrinking the font until it fits
+  function fitLines(ctx, text, maxW, maxLines, size, weight, minSize) {
+    let s = size, lines;
+    while (true) {
+      ctx.font = `${weight} ${s}px ${FONT}`;
+      lines = wrap(ctx, text, maxW);
+      if ((lines.length <= maxLines && lines.every(l => ctx.measureText(l).width <= maxW)) || s <= minSize) break;
+      s -= 2;
+    }
+    return { lines: lines.slice(0, maxLines), size: s };
+  }
+
+  const interactive = [];
+  function canvasPlane(w, h, cw) {
+    const c = document.createElement('canvas'); c.width = cw; c.height = Math.round(cw * h / w);
+    const ctx = c.getContext('2d'), tex = new THREE.CanvasTexture(c);
+    tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false; tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, fog: false }));
+    return { mesh, c, ctx, tex, update() { tex.needsUpdate = true; } };
+  }
+  const BTN_COLORS = { idle: ['#5a95ff', '#2a5bdb'], good: ['#46e591', '#16a058'], bad: ['#ff7477', '#cc2d33'], dim: ['#56627f', '#394360'], start: ['#ffd65a', '#f29d0b'] };
+  function makeButton(w, h, cw, maxLines) {
+    const p = canvasPlane(w, h, cw);
+    p.enabled = true; p.state = 'idle'; p.mesh.userData.btn = p;
+    p.draw = function (label, state) {
+      this.state = state;
+      const { ctx, c } = this, [a, b] = BTN_COLORS[state], r = Math.min(42, c.height * 0.3);
+      ctx.clearRect(0, 0, c.width, c.height);
+      ctx.fillStyle = 'rgba(0,0,0,0.35)'; rr(ctx, 8, 14, c.width - 16, c.height - 18, r); ctx.fill();
+      const g = ctx.createLinearGradient(0, 0, 0, c.height); g.addColorStop(0, a); g.addColorStop(1, b);
+      ctx.fillStyle = g; rr(ctx, 8, 6, c.width - 16, c.height - 20, r); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 5; ctx.stroke();
+      ctx.fillStyle = state === 'start' ? '#3a2200' : '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const ml = maxLines || 1, inner = c.height - 34;
+      const f = fitLines(ctx, label, c.width - 70, ml, Math.min(64, inner * (ml === 1 ? 0.62 : 0.4)), ml === 1 ? 900 : 800, 20);
+      const lh = f.size * 1.12, y0 = (c.height - 14) / 2 + 2 - (f.lines.length - 1) * lh / 2;
+      f.lines.forEach((l, i) => ctx.fillText(l, c.width / 2, y0 + i * lh));
+      this.update();
+    };
+    interactive.push(p.mesh);
+    return p;
+  }
+
+  // ---------- game UI ----------
+  const ui = new THREE.Group(); scene.add(ui);
+  const Z = -2.4;
+  const S = canvasPlane(1.5, 0.19, 1024); S.mesh.position.set(0, 2.66, Z); ui.add(S.mesh);
+  const Q = canvasPlane(1.8, 0.9, 1024);  Q.mesh.position.set(0, 2.1, Z);  ui.add(Q.mesh);
+  const answerBtns = [];
+  [[-0.46, 1.38], [0.46, 1.38], [-0.46, 0.99], [0.46, 0.99]].forEach(([x, y], i) => {
+    const b = makeButton(0.88, 0.37, 768, 5); b.mesh.position.set(x, y, Z + 0.08); b.index = i;
+    b.onSelect = () => answer(b); ui.add(b.mesh); answerBtns.push(b);
+  });
+  const calmBtn = makeButton(0.95, 0.3, 512, 1); calmBtn.mesh.position.set(-0.51, 1.3, Z + 0.08);
+  calmBtn.onSelect = () => { if (DATA.length < 2) return; sfx('click'); newGame('rustig'); }; ui.add(calmBtn.mesh);
+  const monBtn = makeButton(0.95, 0.3, 512, 1); monBtn.mesh.position.set(0.51, 1.3, Z + 0.08);
+  monBtn.onSelect = () => { if (DATA.length < 2) return; sfx('click'); newGame('monsters'); }; ui.add(monBtn.mesh);
+  const prevBtn = makeButton(0.24, 0.22, 256, 1); prevBtn.mesh.position.set(-0.78, 0.98, Z + 0.08);
+  const nextBtn = makeButton(0.24, 0.22, 256, 1); nextBtn.mesh.position.set(0.78, 0.98, Z + 0.08);
+  const listLabel = canvasPlane(1.24, 0.2, 1024); listLabel.mesh.position.set(0, 0.98, Z + 0.08); ui.add(listLabel.mesh);
+  prevBtn.onSelect = () => { sfx('click'); useList(listIdx - 1); drawStart(); drawListLabel(); };
+  nextBtn.onSelect = () => { sfx('click'); useList(listIdx + 1); drawStart(); drawListLabel(); };
+  ui.add(prevBtn.mesh); ui.add(nextBtn.mesh);
+  function drawListLabel() {
+    const { ctx, c } = listLabel; panelBg(ctx, c, 60);
+    ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const txt = `📚 Lijst ${listIdx + 1} van ${LIST_KEYS.length}: ${TITEL}`;
+    fit(ctx, txt, c.width - 60, 58, 800); ctx.fillText(txt, c.width / 2, c.height / 2 + 2); listLabel.update();
+  }
+  function showModeButtons(on) {
+    calmBtn.mesh.visible = monBtn.mesh.visible = on;
+    const many = on && LIST_KEYS.length > 1;
+    prevBtn.mesh.visible = nextBtn.mesh.visible = listLabel.mesh.visible = many;
+    if (on) { calmBtn.draw('📖 Rustig oefenen', 'start'); monBtn.draw('⛄ Sneeuwmonsters', 'good'); }
+    if (many) { prevBtn.draw('◀', 'idle'); nextBtn.draw('▶', 'idle'); drawListLabel(); }
+  }
+
+  function panelBg(ctx, c, r) {
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.fillStyle = 'rgba(8,20,52,0.9)'; rr(ctx, 6, 6, c.width - 12, c.height - 12, r); ctx.fill();
+    ctx.strokeStyle = 'rgba(160,200,255,0.6)'; ctx.lineWidth = 6; ctx.stroke();
+  }
+  function drawScore() {
+    const { ctx, c } = S; panelBg(ctx, c, 60);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#ffffff';
+    const life = mode === 'monsters' ? '     ' + '❤️'.repeat(Math.max(0, hearts)) + '🤍'.repeat(Math.max(0, LEVENS - hearts)) : '';
+    const txt = `⭐ ${score}     ✅ ${solved}/${total}     🔥 ${streak}     ⏱ ${fmtTime(elapsed())}${life}`;
+    fit(ctx, txt, c.width - 80, 58, 800); ctx.fillText(txt, c.width / 2, c.height / 2 + 2); S.update();
+  }
+
+  let best = 0;
+  function loadBest() { try { best = parseInt(localStorage.getItem(listKey() + '-score') || '0', 10) || 0; } catch (e) { best = 0; } }
+
+  function drawStart() {
+    const { ctx, c } = Q; panelBg(ctx, c, 44);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = '#ffcf40'; fit(ctx, TITEL, c.width - 120, 112, 900); ctx.fillText(TITEL, 512, 140);
+    ctx.fillStyle = '#ffffff'; ctx.font = `800 54px ${FONT}`; ctx.fillText('Wat betekent het?', 512, 215);
+    ctx.fillStyle = '#dfe8ff'; ctx.font = `700 42px ${FONT}`;
+    ctx.fillText(!LIST_KEYS.length ? 'woordenlijsten.js niet gevonden' : DATA.length < 2 ? 'Zet minstens 2 woorden in deze lijst.' : `${DATA.length} woorden om te oefenen`, 512, 305);
+    ctx.fillStyle = '#b8c7ea'; ctx.font = `700 38px ${FONT}`;
+    const bc = bestTime('rustig'), bm = bestTime('monsters');
+    if (!bc && !bm) ctx.fillText('Kies hoe je wilt spelen 👇', 512, 380);
+    else {
+      if (bc) ctx.fillText(`Snelste tijd rustig: ${fmtTime(bc)}`, 512, 375);
+      if (bm) ctx.fillText(`Snelste tijd monsters: ${fmtTime(bm)}`, 512, bc ? 430 : 375);
+    }
+    Q.update();
+  }
+  function drawQuestion(fb) {
+    const { ctx, c } = Q, d = DATA[cur], toWord = curDir === 'b2w'; panelBg(ctx, c, 44);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = '#b8c7ea'; ctx.font = `700 40px ${FONT}`;
+    ctx.fillText(toWord ? 'Welk woord betekent:' : 'Wat betekent dit woord?', 512, 64);
+    ctx.fillStyle = '#ffcf40';
+    if (toWord) {
+      ctx.textBaseline = 'middle';
+      const f = fitLines(ctx, d.betekenis, 920, 4, 64, 800, 26), lh = f.size * 1.18, y0 = 195 - (f.lines.length - 1) * lh / 2;
+      f.lines.forEach((l, i) => ctx.fillText(l, 512, y0 + i * lh));
+      ctx.textBaseline = 'alphabetic';
+    } else {
+      fit(ctx, d.woord, 920, 112, 900); ctx.fillText(d.woord, 512, 230);
+    }
+    ctx.strokeStyle = 'rgba(160,200,255,0.3)'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(60, 312); ctx.lineTo(964, 312); ctx.stroke();
+    if (!fb) {
+      ctx.fillStyle = '#dfe8ff'; ctx.font = `700 42px ${FONT}`; ctx.fillText(mode === 'monsters' ? 'Raak het goede sneeuwmonster! ⛄' : 'Kies het goede antwoord 👇', 512, 410);
+    } else {
+      ctx.fillStyle = fb.good ? '#5cf0a0' : '#ff9a9d'; fit(ctx, fb.title, 920, 48, 900); ctx.fillText(fb.title, 512, 368);
+      ctx.fillStyle = '#fff3c4';
+      const line = d.tip ? '💡 ' + d.tip : (toWord ? `Het woord is: ${d.woord}` : `${d.woord} = ${d.betekenis}`);
+      const f = fitLines(ctx, line, 900, 3, 38, 700, 22);
+      f.lines.forEach((l, i) => ctx.fillText(l, 512, 420 + i * f.size * 1.15));
+    }
+    Q.update();
+  }
+  function starShape(ctx, cx, cy, r, filled) {
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rad = i % 2 ? r * 0.45 : r; ctx.lineTo(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad); }
+    ctx.closePath(); ctx.fillStyle = filled ? '#ffcf40' : 'rgba(255,255,255,0.12)'; ctx.fill();
+    ctx.lineWidth = 5; ctx.strokeStyle = filled ? '#fff1b8' : 'rgba(255,255,255,0.35)'; ctx.stroke();
+  }
+  function drawEnd(newBest, newTime, secs, lost) {
+    const { ctx, c } = Q; panelBg(ctx, c, 44);
+    if (lost) {
+      ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = '#ff9a9d'; ctx.font = `900 84px ${FONT}`; ctx.fillText('Oei, gepakt! ⛄', 512, 110);
+      ctx.fillStyle = '#ffffff'; ctx.font = `800 48px ${FONT}`; ctx.fillText(`${solved} van ${total} vragen gehaald`, 512, 220);
+      ctx.fillStyle = '#b8c7ea'; ctx.font = `700 40px ${FONT}`; ctx.fillText(`${score} punten`, 512, 290);
+      ctx.fillStyle = '#dfe8ff'; ctx.font = `700 38px ${FONT}`;
+      ctx.fillText('De sneeuwmonsters waren te snel.', 512, 380); ctx.fillText('Probeer het nog eens!', 512, 432);
+      Q.update(); return;
+    }
+    const stars = firstRight === total ? 3 : firstRight >= Math.ceil(total * 0.75) ? 2 : 1;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = '#ffcf40'; ctx.font = `900 84px ${FONT}`; ctx.fillText('Klaar! 🎉', 512, 100);
+    [362, 512, 662].forEach((x, i) => starShape(ctx, x, 180, 46, i < stars));
+    ctx.fillStyle = '#ffffff'; ctx.font = `800 46px ${FONT}`; ctx.fillText(`${firstRight} van ${total} meteen goed`, 512, 285);
+    ctx.fillStyle = newTime ? '#5cf0a0' : '#ffffff'; ctx.font = `900 46px ${FONT}`;
+    const bt = bestTime(mode);
+    ctx.fillText(newTime ? `⏱ ${fmtTime(secs)}, nieuwe snelste tijd! 🏆` : `⏱ ${fmtTime(secs)} (snelste: ${fmtTime(bt)})`, 512, 350);
+    ctx.fillStyle = '#b8c7ea'; ctx.font = `700 38px ${FONT}`;
+    ctx.fillText(newBest ? `${score} punten, nieuw record!` : `${score} punten (beste: ${best})`, 512, 410);
+    ctx.fillStyle = '#dfe8ff'; ctx.font = `700 36px ${FONT}`;
+    ctx.fillText(newTime ? 'Wauw, sneller dan ooit!' : stars === 3 ? 'Alles goed! Lukt het nog sneller?' : 'Goed geoefend! Nog een keer?', 512, 470);
+    Q.update();
+  }
+
+  // ---------- timer ----------
+  let startedAt = 0, endedAt = 0, lastShownSec = -1;
+  const elapsed = () => !startedAt ? 0 : Math.floor(((endedAt || performance.now()) - startedAt) / 1000);
+  const fmtTime = secs => `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+  // fastest time is kept per word list and settings, so a new list starts fresh
+  function listKey() {
+    const src = JSON.stringify([DATA.map(d => [d.woord, d.betekenis]), AANTAL_VRAGEN, VRAAGSOORTEN]);
+    let h = 5381; for (let i = 0; i < src.length; i++) h = ((h << 5) + h + src.charCodeAt(i)) | 0;
+    return 'woorden-tijd-' + (h >>> 0).toString(36);
+  }
+  const timeKey = m => listKey() + (m === 'monsters' ? '-m' : '');
+  function bestTime(m) { try { return parseInt(localStorage.getItem(timeKey(m || mode)) || '0', 10) || 0; } catch (e) { return 0; } }
+
+  // ---------- game logic ----------
+  const TYPE_MAP = { 'woord-naar-betekenis': 'w2b', 'betekenis-naar-woord': 'b2w' };
+  let phase = 'start', queue = [], cur = -1, curDir = 'w2b', curId = 0, options = [], wrongOnce = new Set(), total = 0;
+  let score = 0, streak = 0, solved = 0, firstRight = 0, locked = false, waitBtn = null;
+  let mode = 'rustig', hearts = 0, requeued = false, waitCreature = null;
+  function setLayout() {
+    const mon = mode === 'monsters' && phase === 'question';
+    Q.mesh.position.set(0, mon ? 2.6 : 2.1, Z); Q.mesh.scale.setScalar(mon ? 0.85 : 1);
+    S.mesh.position.set(0, mon ? 3.08 : 2.66, Z);
+    if (!renderer.xr.isPresenting) resize();
+  }
+  const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const label = i => curDir === 'b2w' ? DATA[i].woord : DATA[i].betekenis;
+
+  function showStart() {
+    phase = 'start';
+    answerBtns.forEach(b => b.mesh.visible = false);
+    clearCreatures(); showModeButtons(true);
+    S.mesh.visible = false; setLayout(); drawStart();
+  }
+  function newGame(m) {
+    mode = m === 'monsters' ? 'monsters' : 'rustig';
+    hearts = Math.max(1, Math.round(Number(LEVENS) || 3));
+    logEvent('spel-gestart', { l: listName(), m: mode });
+    const types = (Array.isArray(VRAAGSOORTEN) ? VRAAGSOORTEN : []).map(t => TYPE_MAP[t]).filter(Boolean);
+    const pool = types.length ? types : ['w2b'];
+    const n = Math.round(Number(AANTAL_VRAGEN) || 0);
+    total = Math.max(1, Math.min(100, n > 0 ? n : DATA.length));
+    const order = [];
+    while (order.length < total) {
+      const round = shuffle(DATA.map((_, i) => i));
+      if (order.length && round[0] === order[order.length - 1]) round.push(round.shift());
+      order.push(...round);
+    }
+    queue = order.slice(0, total).map((i, id) => ({ id, i, dir: pool[Math.floor(Math.random() * pool.length)] }));
+    wrongOnce = new Set(); score = 0; streak = 0; solved = 0; firstRight = 0; locked = false; waitBtn = null;
+    phase = 'question'; showModeButtons(false); S.mesh.visible = true; setLayout();
+    startedAt = performance.now(); endedAt = 0; lastShownSec = -1;
+    nextQuestion();
+  }
+  function nextQuestion() {
+    if (!queue.length) return endGame();
+    const item = queue.shift(); cur = item.i; curDir = item.dir; curId = item.id;
+    const others = shuffle(DATA.map((_, i) => i).filter(i => i !== cur)).slice(0, NOPT - 1);
+    options = shuffle([cur, ...others]);
+    requeued = false; waitCreature = null;
+    if (mode === 'monsters') {
+      answerBtns.forEach(b => b.mesh.visible = false);
+      locked = false; waitBtn = null;
+      spawnCreatures(); drawQuestion(null); drawScore();
+      return;
+    }
+    answerBtns.forEach((b, i) => {
+      b.mesh.visible = i < options.length;
+      if (i < options.length) { b.enabled = true; b.draw(label(options[i]), 'idle'); }
+    });
+    locked = false; waitBtn = null;
+    drawQuestion(null); drawScore();
+  }
+  function answer(btn) {
+    if (phase !== 'question') return;
+    if (waitBtn) { if (btn === waitBtn) { sfx('click'); nextQuestion(); } return; }
+    if (locked) return;
+    locked = true;
+    const opt = options[btn.index], correctBtn = answerBtns[options.indexOf(cur)];
+    if (opt === cur) {
+      const first = !wrongOnce.has(curId), gain = first ? 10 + Math.min(streak, 5) * 2 : 5;
+      score += gain; streak++; solved++; if (first) firstRight++;
+      answerBtns.forEach((b, i) => { if (i < options.length) b.draw(label(options[i]), b === btn ? 'good' : 'dim'); });
+      drawQuestion({ good: true, title: `Goed zo! 🎉  +${gain}` }); drawScore();
+      sfx('good'); buzz(0.5, 80); burst(btn.mesh);
+      setTimeout(nextQuestion, 2000);
+    } else {
+      streak = 0; wrongOnce.add(curId);
+      queue.splice(Math.min(2, queue.length), 0, { id: curId, i: cur, dir: curDir });
+      answerBtns.forEach((b, i) => { if (i < options.length) b.draw(label(options[i]), b === btn ? 'bad' : b === correctBtn ? 'good' : 'dim'); });
+      drawQuestion({ good: false, title: 'Oeps! Het goede antwoord is groen. Kies de groene knop.' }); drawScore();
+      sfx('bad'); buzz(0.9, 160);
+      waitBtn = correctBtn; locked = false;
+    }
+  }
+  function endGame(lost) {
+    endedAt = performance.now();
+    const secs = elapsed();
+    logEvent(lost ? 'spel-verloren' : 'spel-klaar', { l: listName(), m: mode, goed: lost ? solved : firstRight, n: total, t: secs });
+    phase = 'end';
+    let newBest = false, newTime = false;
+    if (score > best) { best = score; newBest = true; try { localStorage.setItem(listKey() + '-score', String(best)); } catch (e) {} }
+    const bt = bestTime(mode);
+    if (!lost && (!bt || secs < bt)) { newTime = true; try { localStorage.setItem(timeKey(mode), String(secs)); } catch (e) {} }
+    answerBtns.forEach(b => b.mesh.visible = false);
+    clearCreatures(); showModeButtons(true); setLayout();
+    drawEnd(newBest, newTime, secs, lost); drawScore();
+    if (lost) { sfx('bad'); return; }
+    sfx('win'); if (firstRight >= Math.ceil(total * 0.75)) { burst(Q.mesh); setTimeout(() => burst(Q.mesh), 300); }
+  }
+
+  // ---------- snow monsters ----------
+  const creatures = [];
+  const cMats = {
+    snow: new THREE.MeshLambertMaterial({ color: 0xf8fbff }), coal: new THREE.MeshLambertMaterial({ color: 0x222222 }),
+    carrot: new THREE.MeshLambertMaterial({ color: 0xff8a1f }), stick: new THREE.MeshLambertMaterial({ color: 0x6b4423 }),
+    scarf: [0xe53935, 0x1e88e5, 0x7cb342, 0xab47bc].map(c => new THREE.MeshLambertMaterial({ color: c }))
+  };
+  const cGeo = {
+    b1: new THREE.SphereGeometry(0.32, 20, 14), b2: new THREE.SphereGeometry(0.24, 20, 14), b3: new THREE.SphereGeometry(0.17, 20, 14),
+    eye: new THREE.SphereGeometry(0.025, 8, 6), nose: new THREE.ConeGeometry(0.035, 0.16, 10), scarf: new THREE.TorusGeometry(0.17, 0.045, 8, 20),
+    arm: new THREE.CylinderGeometry(0.015, 0.02, 0.45, 6), pole: new THREE.CylinderGeometry(0.02, 0.02, 1.0, 6)
+  };
+  const SIGN = { idle: ['#fffaf0', '#2a2a3a', '#c9b48a'], good: ['#46e591', '#0b3a20', '#16a058'], bad: ['#ff7477', '#3a0b0b', '#cc2d33'] };
+  function drawSign(cr, state) {
+    const { ctx, c } = cr.sign, [bg, fg, edge] = SIGN[state];
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.fillStyle = bg; rr(ctx, 6, 6, c.width - 12, c.height - 12, 30); ctx.fill();
+    ctx.strokeStyle = edge; ctx.lineWidth = 10; ctx.stroke();
+    ctx.fillStyle = fg; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const f = fitLines(ctx, cr.text, c.width - 70, 5, 72, 900, 22), lh = f.size * 1.15, y0 = c.height / 2 - (f.lines.length - 1) * lh / 2;
+    f.lines.forEach((l, i) => ctx.fillText(l, c.width / 2, y0 + i * lh));
+    cr.sign.update();
+  }
+  function makeCreature(i, opt) {
+    const g = new THREE.Group(), body = new THREE.Group(); g.add(body);
+    const add = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); body.add(m); return m; };
+    add(cGeo.b1, cMats.snow, 0, 0.3, 0); add(cGeo.b2, cMats.snow, 0, 0.78, 0); add(cGeo.b3, cMats.snow, 0, 1.14, 0);
+    add(cGeo.eye, cMats.coal, -0.06, 1.19, 0.15); add(cGeo.eye, cMats.coal, 0.06, 1.19, 0.15);
+    const nose = add(cGeo.nose, cMats.carrot, 0, 1.13, 0.22); nose.rotation.x = Math.PI / 2;
+    const scarf = add(cGeo.scarf, cMats.scarf[i % 4], 0, 0.98, 0); scarf.rotation.x = Math.PI / 2;
+    [0.1, 0.17, 0.24].forEach(y => add(cGeo.eye, cMats.coal, 0, 0.62 + y, 0.235));
+    const armL = add(cGeo.arm, cMats.stick, -0.36, 0.95, 0); armL.rotation.z = 1.0;
+    const armR = add(cGeo.arm, cMats.stick, 0.3, 1.0, 0); armR.rotation.z = -0.5;
+    add(cGeo.pole, cMats.stick, 0.4, 1.2, 0);
+    const cr = { g, body, opt, text: label(opt), alive: true, state: 'walk', r: 7, angle: 0, wait: 0, melt: 0, hitShake: 0, phase: Math.random() * 6 };
+    cr.sign = canvasPlane(1.1, 0.64, 768); cr.sign.mesh.position.set(0.12, 1.7, 0.05); g.add(cr.sign.mesh);
+    drawSign(cr, 'idle');
+    g.traverse(m => { if (m.isMesh) m.userData.creature = cr; });
+    return cr;
+  }
+  function clearCreatures() {
+    creatures.forEach(cr => { ui.remove(cr.g); cr.sign.mesh.material.map.dispose(); cr.sign.mesh.material.dispose(); });
+    creatures.length = 0; waitCreature = null;
+  }
+  function placeCreature(cr) {
+    const x = Math.sin(cr.angle) * cr.r, z = -Math.cos(cr.angle) * cr.r;
+    cr.g.position.set(x, -(cr.sink || 0), z); cr.g.rotation.y = Math.atan2(-x, -z);
+  }
+  function spawnCreatures() {
+    clearCreatures();
+    const vr = renderer.xr.isPresenting;
+    // on a flat screen keep them inside the view, also in portrait
+    const halfH = THREE.MathUtils.radToDeg(Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect));
+    const k = vr ? 1 : Math.min(1, (halfH * 0.75) / 24);
+    const angles = (vr ? [-60, -20, 20, 60] : [-24, -8, 8, 24]).map(a => a * k).slice(0, options.length);
+    const chars = (curDir === 'b2w' ? DATA[cur].betekenis : DATA[cur].woord).length + options.reduce((a, o) => a + label(o).length, 0);
+    const walkSecs = Math.min(45, Math.max(10, 10 + chars * 0.08)) / Math.max(0.2, Number(MONSTER_SNELHEID) || 1);
+    const speed = (7 - 0.9) / walkSecs;
+    options.forEach((opt, i) => {
+      const cr = makeCreature(i, opt);
+      cr.angle = THREE.MathUtils.degToRad(angles[i]);
+      cr.speed = speed; cr.wait = 2.5;
+      placeCreature(cr); ui.add(cr.g); creatures.push(cr);
+    });
+  }
+  // melting: the snowman sinks into the snow, droops a little, its sign tips over and a puddle spreads out
+  const puddles = [];
+  const puddleGeo = new THREE.CircleGeometry(0.4, 28);
+  function meltOthers(keep) {
+    creatures.forEach(cr => {
+      if (cr === keep || !cr.alive) return;
+      cr.alive = false; cr.state = 'melt'; cr.melt = 0; cr.sink = 0;
+      cr.sign.mesh.material.transparent = true;
+      const pd = new THREE.Mesh(puddleGeo, new THREE.MeshBasicMaterial({ color: 0xbfdcff, transparent: true, opacity: 0.75, depthWrite: false }));
+      pd.rotation.x = -Math.PI / 2; pd.position.set(cr.g.position.x, 0.012, cr.g.position.z); pd.scale.setScalar(0.2);
+      ui.add(pd); puddles.push({ m: pd, t: 0 });
+    });
+  }
+  function updatePuddles(dt) {
+    for (let i = puddles.length - 1; i >= 0; i--) {
+      const p = puddles[i]; p.t += dt;
+      p.m.scale.setScalar(0.2 + Math.min(1, p.t / 1.1) * 1.1);
+      if (p.t > 1.4) p.m.material.opacity = Math.max(0, 0.75 - (p.t - 1.4) * 0.6);
+      if (p.t > 2.7) { ui.remove(p.m); p.m.material.dispose(); puddles.splice(i, 1); }
+    }
+  }
+  function shootCreature(cr, point) {
+    if (phase !== 'question' || mode !== 'monsters' || !cr.alive) return;
+    if (waitCreature) {
+      if (cr === waitCreature) { cr.alive = false; cr.g.visible = false; snowPuff(point || cr.g.position); sfx('click'); nextQuestion(); }
+      return;
+    }
+    if (locked) return;
+    if (cr.opt === cur) {
+      locked = true;
+      // missed earlier in this question: like clicking the green button in calm mode, it only counts when re-asked
+      const retry = requeued;
+      const first = !wrongOnce.has(curId), gain = retry ? 0 : first ? 10 + Math.min(streak, 5) * 2 : 5;
+      if (!retry) { score += gain; streak++; solved++; if (first) firstRight++; }
+      cr.alive = false; cr.state = 'gone'; cr.g.visible = false;
+      const p = new THREE.Vector3(); cr.sign.mesh.getWorldPosition(p);
+      burst(p); snowPuff(p); snowPuff(cr.body.children[1].getWorldPosition(new THREE.Vector3()));
+      meltOthers(null);
+      drawQuestion({ good: true, title: retry ? 'Raak! Deze komt straks nog een keer.' : `Raak! 🎯  +${gain}` }); drawScore();
+      sfx('good'); buzz(0.6, 90);
+      setTimeout(nextQuestion, 1900);
+    } else {
+      streak = 0; wrongOnce.add(curId);
+      // keep throwing until you hit the right one; the question comes back once, 2 questions later
+      if (!requeued) { requeued = true; queue.splice(Math.min(2, queue.length), 0, { id: curId, i: cur, dir: curDir }); }
+      drawSign(cr, 'bad'); cr.r = Math.max(1.0, cr.r - 0.8); cr.hitShake = 0.5; placeCreature(cr);
+      drawQuestion({ good: false, title: 'Nee hoor! Dat is niet goed.' }); drawScore();
+      sfx('bad'); buzz(0.9, 160);
+    }
+  }
+  function creatureReached() {
+    locked = true; streak = 0; wrongOnce.add(curId); hearts--;
+    sfx('boing'); buzz(1, 300);
+    const good = creatures.find(cr => cr.opt === cur);
+    meltOthers(good);
+    if (hearts <= 0) { drawQuestion({ good: false, title: 'Au! Je levens zijn op.' }); drawScore(); setTimeout(() => endGame(true), 1800); return; }
+    if (!requeued) { requeued = true; queue.splice(Math.min(2, queue.length), 0, { id: curId, i: cur, dir: curDir }); }
+    good.state = 'back'; good.wait = 0; drawSign(good, 'good');
+    waitCreature = good; locked = false;
+    drawQuestion({ good: false, title: 'Au! Gooi naar het groene bord.' }); drawScore();
+  }
+  function updateCreatures(dt, t) {
+    updatePuddles(dt);
+    if (!creatures.length) return;
+    let reached = false;
+    creatures.forEach(cr => {
+      if (cr.state === 'walk') {
+        if (cr.wait > 0) cr.wait -= dt;
+        else if (!locked && !waitCreature) { cr.r -= cr.speed * dt; if (cr.r <= 0.9) reached = true; }
+        cr.body.position.y = Math.abs(Math.sin(t * 5 + cr.phase)) * 0.05;
+        cr.body.rotation.z = Math.sin(t * 5 + cr.phase) * 0.06;
+      } else if (cr.state === 'back') {
+        cr.r = Math.min(2.2, cr.r + dt * 3);
+        const s = 1.04 + Math.sin(t * 7) * 0.04; cr.g.scale.set(s, s, s);
+      } else if (cr.state === 'melt') {
+        cr.melt += dt / 1.1; const e = Math.min(1, cr.melt), ease = e * e;
+        cr.sink = ease * 1.45;                                   // slides down into the snow
+        cr.body.rotation.x = -e * 0.35;                          // droops forward a bit
+        cr.body.scale.setScalar(1 - e * 0.25);
+        cr.sign.mesh.rotation.x = -e * 1.2;                      // sign tips over
+        cr.sign.mesh.material.opacity = 1 - e;
+        if (cr.melt >= 1) { cr.state = 'gone'; cr.g.visible = false; }
+      }
+      if (cr.hitShake > 0) { cr.hitShake -= dt; cr.body.rotation.y = Math.sin(t * 40) * 0.25 * cr.hitShake; } else cr.body.rotation.y = 0;
+      placeCreature(cr);
+    });
+    if (reached && phase === 'question' && !locked && !waitCreature) creatureReached();
+  }
+
+  // ---------- sound ----------
+  let actx = null;
+  function ensureAudio() { try { if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); } catch (e) {} }
+  function tone(f, t0, dur, type, vol) {
+    if (!actx) return;
+    const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime + t0;
+    o.type = type; o.frequency.setValueAtTime(f, t);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur + 0.05);
+  }
+  function sfx(kind) {
+    ensureAudio();
+    if (kind === 'click') tone(620, 0, 0.12, 'sine', 0.15);
+    if (kind === 'good') { tone(660, 0, 0.18, 'triangle', 0.22); tone(880, 0.1, 0.18, 'triangle', 0.22); tone(1320, 0.2, 0.3, 'triangle', 0.2); }
+    if (kind === 'bad') { tone(260, 0, 0.22, 'square', 0.07); tone(196, 0.16, 0.32, 'square', 0.07); }
+    if (kind === 'boing') { tone(330, 0, 0.18, 'sine', 0.3); tone(220, 0.1, 0.22, 'sine', 0.28); tone(150, 0.22, 0.3, 'sine', 0.25); }
+    if (kind === 'win') [523, 659, 784, 1047].forEach((f, i) => tone(f, i * 0.13, 0.35, 'triangle', 0.2));
+  }
+  function noiseBurst(dur, f0, f1, vol) {
+    if (!actx) return;
+    const len = Math.floor(actx.sampleRate * dur), buf = actx.createBuffer(1, len, actx.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    const src = actx.createBufferSource(); src.buffer = buf;
+    const bp = actx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 1.2;
+    const t = actx.currentTime, g = actx.createGain();
+    bp.frequency.setValueAtTime(f0, t); bp.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + dur * 0.2); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(bp).connect(g).connect(actx.destination); src.start(t); src.stop(t + dur + 0.02);
+  }
+
+  // ---------- confetti ----------
+  const parts = [];
+  const partGeo = new THREE.OctahedronGeometry(0.022);
+  const partMats = [0xffcf40, 0x46e591, 0xffffff, 0x7fb2ff, 0xff8fb1].map(c => new THREE.MeshBasicMaterial({ color: c, transparent: true, fog: false }));
+  function burst(obj) {
+    const p = new THREE.Vector3(); if (obj && obj.isVector3) p.copy(obj); else obj.getWorldPosition(p);
+    for (let i = 0; i < 36; i++) {
+      const m = new THREE.Mesh(partGeo, partMats[i % partMats.length].clone()); m.position.copy(p);
+      m.userData.v = new THREE.Vector3((Math.random() - 0.5) * 2.2, Math.random() * 2 + 0.6, (Math.random() - 0.3) * 1.4);
+      m.userData.life = 1.2; scene.add(m); parts.push(m);
+    }
+  }
+
+  // ---------- input ----------
+  const raycaster = new THREE.Raycaster();
+  const tmpM = new THREE.Matrix4(), tmpV = new THREE.Vector3(), tmpD = new THREE.Vector3();
+  function hitFromRay() {
+    const list = interactive.filter(m => m.visible);
+    creatures.forEach(cr => { if (cr.alive) cr.g.traverse(m => { if (m.isMesh) list.push(m); }); });
+    const hits = raycaster.intersectObjects(list, false); return hits.length ? hits[0] : null;
+  }
+  function selectHit(hit) {
+    if (!hit) return;
+    if (hit.object.userData.creature) { shootCreature(hit.object.userData.creature, hit.point); return; }
+    const b = hit.object.userData.btn; if (b && b.enabled && b.onSelect) b.onSelect();
+  }
+
+  const controllers = [];
+  let lastSource = null;
+  for (let i = 0; i < 2; i++) {
+    const c = renderer.xr.getController(i);
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]),
+      new THREE.LineBasicMaterial({ color: 0x9fd3ff, transparent: true, opacity: 0.8 }));
+    line.scale.z = 4; c.add(line);
+    const dot = new THREE.Mesh(new THREE.SphereGeometry(0.015, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false })); dot.visible = false; scene.add(dot);
+    c.userData = { line, dot, src: null };
+    c.addEventListener('connected', e => { c.userData.src = e.data; });
+    c.addEventListener('disconnected', () => { c.userData.src = null; dot.visible = false; });
+    c.addEventListener('select', () => throwSnowball(c));
+    scene.add(c); controllers.push(c);
+    const grip = renderer.xr.getControllerGrip(i);
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.03, 0.12), new THREE.MeshLambertMaterial({ color: 0xdfe8ff })); body.position.z = 0.02; grip.add(body); scene.add(grip);
+  }
+  function rayFromController(c) {
+    tmpM.identity().extractRotation(c.matrixWorld);
+    raycaster.ray.origin.setFromMatrixPosition(c.matrixWorld);
+    raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tmpM);
+  }
+  function buzz(intensity, ms) { try { const h = lastSource && lastSource.gamepad && lastSource.gamepad.hapticActuators; if (h && h[0]) h[0].pulse(intensity, ms); } catch (e) {} }
+
+  // ---------- snowballs (VR only) ----------
+  const snowballs = [];
+  const ballGeo = new THREE.SphereGeometry(0.035, 16, 12), ballMat = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x334466 });
+  const puffGeo = new THREE.IcosahedronGeometry(0.018, 0), puffMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, fog: false });
+  const stateKey = () => `${phase}|${curId}|${solved}|${queue.length}`;
+  function snowPuff(point) {
+    for (let i = 0; i < 16; i++) {
+      const m = new THREE.Mesh(puffGeo, puffMat.clone()); m.position.copy(point);
+      m.userData.v = new THREE.Vector3((Math.random() - 0.5) * 1.6, Math.random() * 1.2, (Math.random() - 0.2) * 1.2);
+      m.userData.life = 0.7; scene.add(m); parts.push(m);
+    }
+  }
+  function throwSnowball(c) {
+    ensureAudio(); lastSource = c.userData.src;
+    rayFromController(c);
+    const hit = hitFromRay();
+    const from = raycaster.ray.origin.clone().addScaledVector(raycaster.ray.direction, 0.08);
+    const to = hit ? hit.point.clone() : raycaster.ray.origin.clone().addScaledVector(raycaster.ray.direction, 6);
+    const dist = from.distanceTo(to), ball = new THREE.Mesh(ballGeo, ballMat);
+    ball.position.copy(from); scene.add(ball);
+    snowballs.push({ ball, from, to, t: 0, dur: Math.max(0.18, dist / 7), arc: Math.min(0.35, dist * 0.08), hit, key: stateKey() });
+    noiseBurst(0.22, 900, 2500, 0.18); buzz(0.25, 30);
+  }
+  function updateSnowballs(dt) {
+    for (let i = snowballs.length - 1; i >= 0; i--) {
+      const s = snowballs[i]; s.t += dt / s.dur; const k = Math.min(1, s.t);
+      s.ball.position.lerpVectors(s.from, s.to, k); s.ball.position.y += 4 * s.arc * k * (1 - k); s.ball.rotation.x += dt * 12;
+      if (k >= 1) {
+        scene.remove(s.ball); snowballs.splice(i, 1); snowPuff(s.to);
+        if (s.hit) { noiseBurst(0.14, 500, 180, 0.35); if (s.key === stateKey()) selectHit(s.hit); }
+      }
+    }
+  }
+
+  const mouse = new THREE.Vector2(); let mouseIn = false;
+  function setMouse(e) {
+    const r = renderer.domElement.getBoundingClientRect();
+    mouse.x = ((e.clientX - r.left) / r.width) * 2 - 1; mouse.y = -((e.clientY - r.top) / r.height) * 2 + 1; mouseIn = true;
+  }
+  renderer.domElement.addEventListener('pointermove', setMouse);
+  renderer.domElement.addEventListener('pointerleave', () => { mouseIn = false; });
+  renderer.domElement.addEventListener('pointerdown', e => {
+    if (renderer.xr.isPresenting) return;
+    ensureAudio(); setMouse(e); raycaster.setFromCamera(mouse, camera); selectHit(hitFromRay());
+  });
+
+  // ---------- VR session ----------
+  let session = null, needsPlace = false;
+  async function setupVR() {
+    const isHeadset = /OculusBrowser|Quest|Pico|Wolvic/i.test(navigator.userAgent);
+    let ok = false;
+    if (isHeadset) { try { ok = !!(navigator.xr && await navigator.xr.isSessionSupported('immersive-vr')); } catch (e) {} }
+    if (ok) { vrBtn.hidden = false; note.textContent = 'Druk op "Speel in VR". Richt op een antwoord en gooi een sneeuwbal met de trekker.'; }
+    else { vrBtn.hidden = true; note.textContent = 'Klik of tik op een antwoord om te spelen.'; }
+  }
+  vrBtn.addEventListener('click', async () => {
+    ensureAudio();
+    if (session) { session.end(); return; }
+    try {
+      const s = await navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking'] });
+      s.addEventListener('end', () => { session = null; vrBtn.textContent = '🥽 Speel in VR'; ui.position.set(0, 0, 0); ui.rotation.set(0, 0, 0); resize(); });
+      await renderer.xr.setSession(s);
+      session = s; needsPlace = true; vrBtn.textContent = 'Stop VR';
+    } catch (e) { note.textContent = 'VR start niet. Open deze pagina direct in de Meta Quest-browser.'; }
+  });
+
+  // ---------- layout / loop ----------
+  function resize() {
+    const w = app.clientWidth, h = app.clientHeight;
+    renderer.setSize(w, h, false); camera.aspect = w / h;
+    const tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    if (mode === 'monsters' && phase === 'question') {
+      const dist = Math.max(3.6, 0.9 / (tanHalf * camera.aspect));
+      camera.position.set(0, 1.7, Z + dist); camera.lookAt(0, 1.55, Z - 1.6); camera.updateProjectionMatrix(); return;
+    }
+    const dist = Math.max((2.25 / 2) / tanHalf, (2.0 / 2) / (tanHalf * camera.aspect));
+    camera.position.set(0, 1.74, Z + dist); camera.lookAt(0, 1.76, Z); camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', () => { if (!renderer.xr.isPresenting) resize(); });
+  resize();
+
+  const clock = new THREE.Clock();
+  renderer.setAnimationLoop(() => {
+    const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
+    if (renderer.xr.isPresenting && needsPlace) {
+      const xc = renderer.xr.getCamera(camera); xc.getWorldPosition(tmpV);
+      if (tmpV.y > 0.3) {
+        xc.getWorldDirection(tmpD); ui.rotation.y = Math.atan2(-tmpD.x, -tmpD.z);
+        ui.position.set(tmpV.x, Math.max(-0.7, Math.min(0.2, tmpV.y - 1.6)), tmpV.z); needsPlace = false;
+      }
+    }
+    const hovered = new Set();
+    if (renderer.xr.isPresenting) {
+      controllers.forEach(c => {
+        const { line, dot, src } = c.userData;
+        if (!src) { line.visible = false; return; }
+        line.visible = true; rayFromController(c);
+        const hit = hitFromRay();
+        if (hit) { hovered.add(hit.object); line.scale.z = hit.distance; dot.position.copy(hit.point); dot.visible = true; }
+        else { line.scale.z = 4; dot.visible = false; }
+      });
+    } else if (mouseIn) {
+      raycaster.setFromCamera(mouse, camera);
+      const hit = hitFromRay(); if (hit) hovered.add(hit.object);
+      renderer.domElement.style.cursor = hit ? 'pointer' : 'default';
+    }
+    interactive.forEach(m => {
+      const b = m.userData.btn;
+      let target = hovered.has(m) && b.state !== 'dim' && !locked ? 1.04 : 1;
+      if (b === waitBtn) target = 1.03 + Math.sin(t * 7) * 0.025;
+      const s = m.scale.x + (target - m.scale.x) * Math.min(1, dt * 14); m.scale.set(s, s, 1);
+    });
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i], v = p.userData.v;
+      v.y -= 3.2 * dt; p.position.addScaledVector(v, dt); p.rotation.x += dt * 6; p.rotation.y += dt * 4;
+      p.userData.life -= dt; p.material.opacity = Math.max(0, p.userData.life / 1.2);
+      if (p.userData.life <= 0) { scene.remove(p); p.material.dispose(); parts.splice(i, 1); }
+    }
+    for (let i = 0; i < SNOW; i++) { snowPos[i*3+1] -= dt * (0.35 + (i % 7) * 0.05); snowPos[i*3] += Math.sin(t * 0.8 + i) * dt * 0.08; if (snowPos[i*3+1] < 0) snowPos[i*3+1] = 12; }
+    snowGeo.attributes.position.needsUpdate = true;
+    auroras.forEach(m => {
+      const pos = m.geometry.attributes.position, base = m.userData.base;
+      for (let i = 0; i < pos.count; i++) { const x = base[i*3]; pos.array[i*3+2] = Math.sin(x * 0.14 + t * 0.5 + m.userData.phase) * 3 + Math.sin(x * 0.05 + t * 0.2) * 2; }
+      pos.needsUpdate = true; m.material.opacity = 0.65 + Math.sin(t * 0.6 + m.userData.phase) * 0.25;
+    });
+    if (phase === 'question') { const e = elapsed(); if (e !== lastShownSec) { lastShownSec = e; drawScore(); } }
+    updateSnowballs(dt);
+    updateCreatures(dt, t);
+    renderer.render(scene, camera);
+  });
+
+  startList();
+  showStart();
+  setupVR();
+}
+</script>
+</body>
+</html>

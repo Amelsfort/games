@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Spelletjes</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⛄</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a1838; --bg2: #16306b; --fg: #f3f7ff; --muted: #b8c7ea;
+    --accent: #ffcf40; --accent-ink: #3a2200; --card: rgba(255, 255, 255, 0.08);
+    --card-edge: rgba(255, 255, 255, 0.16);
+    color-scheme: dark;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #060f26; --bg2: #102657; } }
+  :root[data-theme="dark"] { --bg: #060f26; --bg2: #102657; }
+  *, *::before, *::after { box-sizing: inherit; }
+  html { min-height: 100%; }
+  body {
+    min-height: 100vh; margin: 0; padding: 0 16px; overflow-x: hidden;
+    color: var(--fg); font-family: "Nunito", "Trebuchet MS", system-ui, sans-serif;
+    background:
+      radial-gradient(ellipse 80% 40% at 20% 0%, rgba(80, 255, 190, 0.18), transparent 70%),
+      radial-gradient(ellipse 70% 35% at 85% 5%, rgba(150, 120, 255, 0.18), transparent 70%),
+      linear-gradient(var(--bg), var(--bg2));
+    background-color: var(--bg);
+  }
+
+  /* falling snow */
+  .snow { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 0; }
+  .snow i {
+    position: absolute; top: -12px; width: var(--s); height: var(--s); border-radius: 50%;
+    background: #fff; opacity: 0.8; animation: fall var(--d) linear var(--w) infinite;
+  }
+  @keyframes fall { to { transform: translate(var(--x), 105vh); } }
+  @media (prefers-reduced-motion: reduce) { .snow { display: none; } }
+
+  /* snowy ground with pines */
+  .ground {
+    position: fixed; left: 0; right: 0; bottom: 0; height: 22vh; z-index: 0; pointer-events: none;
+  }
+  .ground svg { width: 100%; height: 100%; display: block; }
+
+  main {
+    position: relative; z-index: 1; max-width: 860px; margin: 0 auto;
+    padding-block: clamp(32px, 8vh, 80px) calc(22vh + 24px);
+    text-align: center;
+  }
+  h1 {
+    margin: 0; font-weight: 900; font-size: clamp(2.2rem, 7vw, 3.6rem); line-height: 1.05;
+    text-shadow: 0 4px 0 rgba(0, 0, 0, 0.25);
+  }
+  .sub { margin: 0.6em 0 0; color: var(--muted); font-size: clamp(1.05rem, 3vw, 1.3rem); font-weight: 700; }
+
+  .games {
+    margin-top: clamp(28px, 6vh, 56px);
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 22px;
+  }
+  .game {
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    padding: 28px 22px 24px; border-radius: 28px; text-decoration: none; color: inherit;
+    background: var(--card); border: 2px solid var(--card-edge);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+  }
+  .game:hover { transform: translateY(-6px) rotate(-0.6deg); border-color: var(--accent); background: rgba(255, 255, 255, 0.12); }
+  .game:nth-child(2):hover { transform: translateY(-6px) rotate(0.6deg); }
+  .game:focus-visible { outline: 4px solid #fff; outline-offset: 4px; }
+  .game:active { transform: translateY(-2px) scale(0.98); }
+  .emoji {
+    font-size: 4.5rem; line-height: 1; filter: drop-shadow(0 6px 6px rgba(0, 0, 0, 0.3));
+    animation: bob 3s ease-in-out infinite;
+  }
+  .game:nth-child(2) .emoji { animation-delay: -1.5s; }
+  @keyframes bob { 50% { transform: translateY(-8px); } }
+  @media (prefers-reduced-motion: reduce) { .emoji { animation: none; } .game, .game:hover { transition: none; transform: none; } }
+  .game h2 { margin: 6px 0 0; font-size: 1.7rem; font-weight: 900; }
+  .game p { margin: 0; color: var(--muted); font-size: 1.05rem; line-height: 1.4; font-weight: 700; }
+  .tags { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 4px; }
+  .tags span {
+    font-size: 0.85rem; font-weight: 800; padding: 0.25em 0.7em; border-radius: 999px;
+    background: rgba(255, 255, 255, 0.1); color: var(--fg);
+  }
+  .play {
+    margin-top: 10px; font-weight: 900; font-size: 1.15rem; color: var(--accent-ink);
+    background: var(--accent); border-radius: 999px; padding: 0.75em 1.6em; box-shadow: 0 4px 0 #b77900;
+  }
+</style>
+</head>
+<body>
+<div class="snow" aria-hidden="true"></div>
+<div class="ground" aria-hidden="true">
+  <svg viewBox="0 0 1000 200" preserveAspectRatio="none">
+    <g fill="#1f4a3a">
+      <polygon points="60,120 95,30 130,120"/><polygon points="120,130 150,55 180,130"/>
+      <polygon points="800,115 840,20 880,115"/><polygon points="870,125 900,60 930,125"/>
+      <polygon points="450,135 470,85 490,135"/>
+    </g>
+    <path d="M0,110 C200,80 350,140 520,115 C700,90 820,135 1000,105 L1000,200 L0,200 Z" fill="#e6eefa"/>
+    <path d="M0,150 C250,125 450,170 650,150 C820,135 900,160 1000,145 L1000,200 L0,200 Z" fill="#cfdcf2"/>
+  </svg>
+</div>
+
+<main>
+  <h1>Kies een spel ❄️</h1>
+  <p class="sub">Wat ga je vandaag oefenen?</p>
+
+  <nav class="games">
+    <a class="game" href="wordgame.html">
+      <div class="emoji">📚</div>
+      <h2>Woorden</h2>
+      <p>Weet jij wat de woorden betekenen? Kies rustig of gooi sneeuwballen naar de sneeuwmonsters!</p>
+      <div class="tags"><span>Rustig</span><span>⛄ Monsters</span><span>🥽 VR</span></div>
+      <span class="play">Spelen ▶</span>
+    </a>
+    <a class="game" href="capitals.html">
+      <div class="emoji">🌍</div>
+      <h2>Hoofdsteden</h2>
+      <p>Ken jij de landen en hoofdsteden van Noord-Europa? Zoek ze ook op de kaart!</p>
+      <div class="tags"><span>🗺️ Kaart</span><span>🥽 VR</span></div>
+      <span class="play">Spelen ▶</span>
+    </a>
+  </nav>
+</main>
+
+<script>
+  // a few snowflakes, each with its own size, speed and drift
+  const snow = document.querySelector('.snow');
+  for (let n = 0; n < 60; n++) {
+    const f = document.createElement('i');
+    f.style.left = Math.random() * 100 + 'vw';
+    f.style.setProperty('--s', (2 + Math.random() * 5).toFixed(1) + 'px');
+    f.style.setProperty('--d', (8 + Math.random() * 10).toFixed(1) + 's');
+    f.style.setProperty('--w', (-Math.random() * 18).toFixed(1) + 's');
+    f.style.setProperty('--x', (Math.random() * 80 - 40).toFixed(0) + 'px');
+    snow.appendChild(f);
+  }
+</script>
+</body>
+</html>
