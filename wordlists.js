@@ -1,12 +1,12 @@
 /* =====================================================================
-   WOORDENLIJSTEN voor woorden-vr.html
+   WOORDENLIJSTEN voor wordgame.html
 
    - Elke lijst heeft een korte naam (zonder spaties), een titel en de woorden.
    - Eén regel per woord: het woord, de betekenis en (mag leeg) een tip,
      bijvoorbeeld een voorbeeldzin of ezelsbruggetje.
    - Tekst tussen enkele aanhalingstekens '…' en elke regel eindigt met een komma.
    - Een apostrof in de tekst schrijf je als \'  (bijv. 'zo\'n').
-   - Een lijst openen via een link: woorden-vr.html?lijst=blok2
+   - Een lijst openen via een link: wordgame.html?lijst=blok2
    - In het spel kun je met ◀ ▶ wisselen tussen de lijsten.
    ===================================================================== */
 

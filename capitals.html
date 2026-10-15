@@ -67,6 +67,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="settings.js"></script>
 <script src="themes.js"></script>
 <script>
 /* =====================================================================
@@ -99,15 +100,9 @@ const VRAAGSOORTEN = [
   'kaart-land',            // "Tik op Noorwegen op de kaart"
   'kaart-hoofdstad'        // "Tik op de stip van Oslo op de kaart"
 ];
-const LOG_URL = 'https://script.google.com/macros/s/AKfycbwhsoE5YmSI8VH3hGZWrVssg2E4-1nP4ra5avCC7Hq3ytZ0p-3ZS7oY9imA7EJ5hinh/exec';
-function logEvent(e, s) {
-  if (!LOG_URL) return;
-  const ua = navigator.userAgent;
-  const d = /OculusBrowser|Quest/i.test(ua) ? 'Quest' : /Mobi|Android|iPhone|iPad/i.test(ua) ? 'Mobiel' : 'Computer';
-  const q = new URLSearchParams({ e, d, s: s == null ? '' : String(s) });
-  fetch(LOG_URL + '?' + q, { mode: 'no-cors' }).catch(() => {});
-}
-logEvent('bezoek');
+/* Bezoeken en scores bijhouden in je Google Sheet: de link staat in settings.js. */
+const logGame = (e, s) => logEvent(e, { s: s == null ? '' : String(s) });
+logGame('bezoek');
 </script>
 <script>
 (async function () {
@@ -470,7 +465,7 @@ function start() {
     S.mesh.visible = false; drawStart();
   }
   function newGame() {
-    logEvent('spel-gestart');
+    logGame('spel-gestart');
     // each country once, with a random question type from VRAAGSOORTEN
     const types = (Array.isArray(VRAAGSOORTEN) ? VRAAGSOORTEN : []).map(t => TYPE_MAP[t]).filter(Boolean);
     const pool = types.length ? types : ['land2stad'];
@@ -526,7 +521,7 @@ function start() {
     }
   }
   function endGame() {
-    logEvent('spel-klaar', firstRight + '/' + total);
+    logGame('spel-klaar', firstRight + '/' + total);
     phase = 'end';
     let newBest = false;
     if (score > best) { best = score; newBest = true; try { localStorage.setItem('hoofdsteden-best', String(best)); } catch (e) {} }

@@ -1,15 +1,13 @@
 /* =====================================================================
    THEMA'S voor de startpagina en alle spellen.
 
-   - STANDAARD_THEMA: 'auto' kiest op datum (elk thema met een `periode`
-     is in die periode actief, anders het eerste thema in de lijst).
-     Of zet hier vast een thema, bijv. 'winter' of 'halloween'.
+   - Het standaardthema (STANDAARD_THEMA) staat in settings.js.
+     'auto' kiest op datum: elk thema met een `periode` is in die periode
+     actief, anders het eerste thema in de lijst.
    - Op de startpagina kan iedereen zelf een thema kiezen; dat wordt
      onthouden. Een link met ?thema=halloween gaat altijd voor.
    - Een nieuw thema toevoegen: kopieer een blok in THEMAS en pas het aan.
    ===================================================================== */
-const STANDAARD_THEMA = 'auto';
-
 const THEMAS = {
 
   winter: {
@@ -495,7 +493,8 @@ const THEMA_NAAM = (function () {
   if (want && THEMAS[want]) { kiesThema(want); return want; }
   const stored = gekozenThema();
   if (THEMAS[stored]) return stored;
-  return THEMAS[STANDAARD_THEMA] ? STANDAARD_THEMA : themaOpDatum(new Date());
+  const std = typeof STANDAARD_THEMA === 'string' ? STANDAARD_THEMA : 'auto';   // settings.js may be missing
+  return THEMAS[std] ? std : themaOpDatum(new Date());
 })();
 const THEMA = THEMAS[THEMA_NAAM];
 

@@ -44,11 +44,12 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="settings.js"></script>
 <script src="themes.js"></script>
-<script src="woordenlijsten.js"></script>
+<script src="wordlists.js"></script>
 <script>
 /* =====================================================================
-   DE WOORDENLIJSTEN staan in het bestand woordenlijsten.js, naast dit bestand.
+   DE WOORDENLIJSTEN staan in het bestand wordlists.js, naast dit bestand.
    Daar kun je lijsten toevoegen, aanpassen en kiezen welke standaard opent.
    Hieronder staan alleen de spelinstellingen.
    ===================================================================== */
@@ -69,17 +70,9 @@ const VRAAGSOORTEN = [
 const MONSTER_SNELHEID = 1;
 const LEVENS = 3;
 
-/* Bezoeken en scores bijhouden in je Google Sheet: plak hier dezelfde /exec-link
-   als bij het hoofdstedenspel (of laat leeg). */
-const LOG_URL = 'https://script.google.com/macros/s/AKfycbwhsoE5YmSI8VH3hGZWrVssg2E4-1nP4ra5avCC7Hq3ytZ0p-3ZS7oY9imA7EJ5hinh/exec';
-function logEvent(e, extra) {
-  if (!LOG_URL) return;
-  const ua = navigator.userAgent;
-  const d = /OculusBrowser|Quest/i.test(ua) ? 'Quest' : /Mobi|Android|iPhone|iPad/i.test(ua) ? 'Mobiel' : 'Computer';
-  const q = new URLSearchParams(Object.assign({ g: 'woorden', e, d }, extra || {}));
-  fetch(LOG_URL + '?' + q, { mode: 'no-cors' }).catch(() => {});
-}
-logEvent('bezoek');
+/* Bezoeken en scores bijhouden in je Google Sheet: de link staat in settings.js. */
+const logGame = (e, extra) => logEvent(e, Object.assign({ g: 'woorden' }, extra));
+logGame('bezoek');
 </script>
 <script>
 (async function () {
@@ -245,7 +238,7 @@ function start() {
     ctx.fillStyle = C.accent; fit(ctx, TITEL, c.width - 120, 112, 900); ctx.fillText(TITEL, 512, 140);
     ctx.fillStyle = '#ffffff'; ctx.font = `800 54px ${FONT}`; ctx.fillText('Wat betekent het?', 512, 215);
     ctx.fillStyle = C.text; ctx.font = `700 42px ${FONT}`;
-    ctx.fillText(!LIST_KEYS.length ? 'woordenlijsten.js niet gevonden' : DATA.length < 2 ? 'Zet minstens 2 woorden in deze lijst.' : `${DATA.length} woorden om te oefenen`, 512, 305);
+    ctx.fillText(!LIST_KEYS.length ? 'wordlists.js niet gevonden' : DATA.length < 2 ? 'Zet minstens 2 woorden in deze lijst.' : `${DATA.length} woorden om te oefenen`, 512, 305);
     ctx.fillStyle = C.muted; ctx.font = `700 38px ${FONT}`;
     const bc = bestTime('rustig'), bm = bestTime('monsters');
     if (!bc && !bm) ctx.fillText('Kies hoe je wilt spelen 👇', 512, 380);
@@ -350,7 +343,7 @@ function start() {
   function newGame(m) {
     mode = m === 'monsters' ? 'monsters' : 'rustig';
     hearts = Math.max(1, Math.round(Number(LEVENS) || 3));
-    logEvent('spel-gestart', { l: listName(), m: mode });
+    logGame('spel-gestart', { l: listName(), m: mode });
     const types = (Array.isArray(VRAAGSOORTEN) ? VRAAGSOORTEN : []).map(t => TYPE_MAP[t]).filter(Boolean);
     const pool = types.length ? types : ['w2b'];
     const n = Math.round(Number(AANTAL_VRAGEN) || 0);
@@ -411,7 +404,7 @@ function start() {
   function endGame(lost) {
     endedAt = performance.now();
     const secs = elapsed();
-    logEvent(lost ? 'spel-verloren' : 'spel-klaar', { l: listName(), m: mode, goed: lost ? solved : firstRight, n: total, t: secs });
+    logGame(lost ? 'spel-verloren' : 'spel-klaar', { l: listName(), m: mode, goed: lost ? solved : firstRight, n: total, t: secs });
     phase = 'end';
     let newBest = false, newTime = false;
     if (score > best) { best = score; newBest = true; try { localStorage.setItem(listKey() + '-score', String(best)); } catch (e) {} }
