@@ -74,14 +74,15 @@
     transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
   }
   .game:hover { transform: translateY(-6px) rotate(-0.6deg); border-color: var(--accent); background: rgba(255, 255, 255, 0.12); }
-  .game:nth-child(2):hover { transform: translateY(-6px) rotate(0.6deg); }
+  .game:nth-child(even):hover { transform: translateY(-6px) rotate(0.6deg); }
   .game:focus-visible { outline: 4px solid #fff; outline-offset: 4px; }
   .game:active { transform: translateY(-2px) scale(0.98); }
   .emoji {
     font-size: 4.5rem; line-height: 1; filter: drop-shadow(0 6px 6px rgba(0, 0, 0, 0.3));
     animation: bob 3s ease-in-out infinite;
   }
-  .game:nth-child(2) .emoji { animation-delay: -1.5s; }
+  .game:nth-child(2) .emoji { animation-delay: -1s; }
+  .game:nth-child(3) .emoji { animation-delay: -2s; }
   @keyframes bob { 50% { transform: translateY(-8px); } }
   @media (prefers-reduced-motion: reduce) { .emoji { animation: none; } .game, .game:hover { transition: none; transform: none; } }
   .game h2 { margin: 6px 0 0; font-size: 1.7rem; font-weight: 900; }
@@ -133,6 +134,13 @@
       <h2>Hoofdsteden</h2>
       <p>Ken jij de landen en hoofdsteden van Noord-Europa? Zoek ze ook op de kaart!</p>
       <div class="tags"><span>🗺️ Kaart</span><span>🥽 VR</span></div>
+      <span class="play">Spelen ▶</span>
+    </a>
+    <a class="game" href="traffic.html">
+      <div class="emoji">🚦</div>
+      <h2>Verkeersheld</h2>
+      <p>Ken jij de verkeersborden? En weet jij wie er voorrang heeft op het kruispunt?</p>
+      <div class="tags"><span>🚸 Borden</span><span>🚗 Voorrang</span><span>🥽 VR</span></div>
       <span class="play">Spelen ▶</span>
     </a>
   </nav>

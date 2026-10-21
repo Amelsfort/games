@@ -263,7 +263,7 @@ const THEMAS = {
         scene.add(b); bats.push(b);
       }
 
-      const fall = themeFall(THREE, scene, 220, [0xff8a1f, 0xd9541e, 0xffb42e, 0x8a3a12], 0.09, 0.9, 0.5);
+      const fall = themeFall(THREE, scene, 220, [0xff8a1f, 0xd9541e, 0xffb42e, 0x8a3a12], 0.09, 1, 0.5, 'leaf');
 
       return function update(dt, t) {
         fall(dt, t);
@@ -313,22 +313,48 @@ function themeSky(THREE, scene, stops, stars) {
   scene.add(new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xffffff, size: 0.35, fog: false })));
 }
 
-// falling particles (snow, leaves) around the player; returns the per-frame update
-function themeFall(THREE, scene, n, colors, size, opacity, speed) {
-  const pos = new Float32Array(n * 3), col = new Float32Array(n * 3), cc = new THREE.Color();
-  for (let i = 0; i < n; i++) {
-    pos[i*3] = (Math.random() - 0.5) * 30; pos[i*3+1] = Math.random() * 12; pos[i*3+2] = (Math.random() - 0.5) * 30;
-    cc.setHex(colors[i % colors.length]); col[i*3] = cc.r; col[i*3+1] = cc.g; col[i*3+2] = cc.b;
+// falling particles around the player; returns the per-frame update.
+// shape 'flake' = soft round snowflakes, 'leaf' = tumbling leaves (tinted with `colors`)
+function themeFall(THREE, scene, n, colors, size, opacity, speed, shape) {
+  const pos = new Float32Array(n * 3), cc = new THREE.Color();
+  for (let i = 0; i < n; i++) { pos[i*3] = (Math.random() - 0.5) * 30; pos[i*3+1] = Math.random() * 12; pos[i*3+2] = (Math.random() - 0.5) * 30; }
+  const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d');
+  let step;
+  if (shape === 'leaf') {
+    // white leaf with a darker vein; the instance colour tints it
+    x.fillStyle = '#ffffff'; x.beginPath(); x.moveTo(32, 4);
+    x.bezierCurveTo(56, 16, 56, 44, 32, 58); x.bezierCurveTo(8, 44, 8, 16, 32, 4); x.fill();
+    x.strokeStyle = 'rgba(0,0,0,0.35)'; x.lineWidth = 3; x.beginPath(); x.moveTo(32, 8); x.lineTo(32, 62); x.stroke();
+    x.lineWidth = 2; [[20, 18], [44, 18], [18, 34], [46, 34]].forEach(([ex, ey]) => { x.beginPath(); x.moveTo(32, ey + 8); x.lineTo(ex, ey); x.stroke(); });
+    const mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(size * 1.6, size * 1.6),
+      new THREE.MeshLambertMaterial({ map: new THREE.CanvasTexture(c), alphaTest: 0.5, side: THREE.DoubleSide, transparent: opacity < 1, opacity }), n);
+    const spin = [], m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), one = new THREE.Vector3(1, 1, 1), v = new THREE.Vector3();
+    for (let i = 0; i < n; i++) { mesh.setColorAt(i, cc.setHex(colors[i % colors.length])); spin.push([Math.random() * 6.28, Math.random() * 6.28, 1 + Math.random() * 2, 0.6 + Math.random() * 1.4]); }
+    scene.add(mesh);
+    step = (dt, t) => {
+      for (let i = 0; i < n; i++) {
+        const s = spin[i]; e.set(s[0] + t * s[2], s[1] + t * s[3], Math.sin(t * s[3] + i) * 0.8);
+        m.compose(v.set(pos[i*3], pos[i*3+1], pos[i*3+2]), q.setFromEuler(e), one); mesh.setMatrixAt(i, m);
+      }
+      mesh.instanceMatrix.needsUpdate = true;
+    };
+  } else {
+    const g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.45, 'rgba(255,255,255,0.85)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = g; x.fillRect(0, 0, 64, 64);
+    const col = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { cc.setHex(colors[i % colors.length]); col[i*3] = cc.r; col[i*3+1] = cc.g; col[i*3+2] = cc.b; }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ size: size * 1.5, map: new THREE.CanvasTexture(c), vertexColors: true, transparent: true, opacity, depthWrite: false })));
+    step = () => { geo.attributes.position.needsUpdate = true; };
   }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ size, vertexColors: true, transparent: true, opacity })));
   return function (dt, t) {
     for (let i = 0; i < n; i++) {
       pos[i*3+1] -= dt * (0.35 + (i % 7) * 0.05) * speed; pos[i*3] += Math.sin(t * 0.8 + i) * dt * 0.08 / speed;
       if (pos[i*3+1] < 0) pos[i*3+1] = 12;
     }
-    geo.attributes.position.needsUpdate = true;
+    step(dt, t);
   };
 }
 

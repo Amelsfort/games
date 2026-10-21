@@ -1,0 +1,1203 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Verkeersheld</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚦</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #8fd0ff; --fg: #10233f; --muted: #2c4a72;
+    --accent: #ffcf40; --accent-ink: #3a2200; --chip: rgba(255, 255, 255, 0.85);
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #10233f; --fg: #f3f7ff; --muted: #c9d8f2; --chip: rgba(8, 20, 52, 0.82); } }
+  :root[data-theme="dark"] { --bg: #10233f; --fg: #f3f7ff; --muted: #c9d8f2; --chip: rgba(8, 20, 52, 0.82); }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); height: 100%; }
+  *, *::before, *::after { box-sizing: inherit; }
+  body { height: 100%; margin: 0; overflow: hidden; background: var(--bg); color: var(--fg);
+    font-family: "Nunito", "Trebuchet MS", system-ui, sans-serif; }
+  #app { position: relative; width: 100%; height: 100%; }
+  #app canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  #hud { position: absolute; left: 0; right: 0; bottom: 0; padding: 12px 16px 16px;
+    display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+  #vr { pointer-events: auto; font: 900 1.1rem/1 "Nunito", "Trebuchet MS", system-ui, sans-serif;
+    color: var(--accent-ink); background: var(--accent); border: 0; border-radius: 999px;
+    padding: 0.85em 1.5em; box-shadow: 0 4px 0 #b77900; cursor: pointer; }
+  #vr:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+  #vr[hidden] { display: none; }
+  #flash { position: absolute; inset: 0; pointer-events: none; opacity: 0;
+    background: radial-gradient(circle, rgba(255,250,220,0.95), rgba(255,170,40,0.55) 45%, rgba(255,60,0,0) 75%); }
+  #flash.go { animation: flash 0.45s ease-out; }
+  @keyframes flash { 0% { opacity: 1; } 100% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { #flash.go { animation-duration: 0.15s; } }
+  #note { pointer-events: auto; margin: 0; max-width: 34rem; text-align: center; font-size: 0.92rem;
+    line-height: 1.4; color: var(--muted); background: var(--chip); padding: 0.45em 0.9em; border-radius: 12px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="flash"></div>
+  <div id="hud">
+    <button id="vr" hidden>🥽 Speel in VR</button>
+    <p id="note">Laden…</p>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="settings.js"></script>
+<script src="themes.js"></script>
+<script src="traffic-content.js"></script>
+<script>
+/* Bezoeken en resultaten in je Google Sheet (tab 'verkeer'); de link staat in settings.js.
+   Met ?alles (testen: alle levels open) wordt niets gelogd. */
+const TESTING = new URLSearchParams(location.search).has('alles');
+const logGame = (e, extra) => { if (!TESTING && typeof logEvent === 'function') logEvent(e, Object.assign({ g: 'verkeer' }, extra)); };
+logGame('bezoek');
+</script>
+<script>
+(async function () {
+  try { await Promise.all([document.fonts.load('900 64px Nunito'), document.fonts.load('800 48px Nunito'), document.fonts.load('700 40px Nunito')]); } catch (e) {}
+  start();
+})();
+
+function start() {
+  const FONT = '"Nunito", "Trebuchet MS", system-ui, sans-serif';
+  const app = document.getElementById('app'), vrBtn = document.getElementById('vr'), note = document.getElementById('note');
+
+  // ---------- content ----------
+  const HAS_CONTENT = typeof LEVELS !== 'undefined' && Array.isArray(LEVELS);
+  const SIGNS = (typeof BORDEN !== 'undefined' && Array.isArray(BORDEN) ? BORDEN : []).filter(b => b && b.id && b.betekenis && b.familie);
+  const FAMS = typeof FAMILIES === 'object' && FAMILIES ? FAMILIES : {};
+  const SITS = typeof SITUATIES === 'object' && SITUATIES ? SITUATIES : {};
+  const LVLS = (HAS_CONTENT ? LEVELS : []).filter(l => l && l.id && l.aan !== false).slice(0, 12);
+  const params = new URLSearchParams(location.search);
+  if (params.has('reset')) { try { localStorage.removeItem('verkeer-voortgang'); } catch (e) {} }
+  const UNLOCK_ALL = TESTING;
+
+  // ---------- renderer / scene ----------
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.xr.enabled = true;
+  renderer.xr.setReferenceSpaceType('local-floor');
+  app.insertBefore(renderer.domElement, app.firstChild);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(60, 1, 0.03, 200);
+  const THEMED = typeof THEMA === 'object' && THEMA && typeof THEMA.scene === 'function';
+  const updateScenery = THEMED ? THEMA.scene(THREE, scene) : null;   // sky, ground, lights and weather come from themes.js
+
+  (function environment() {
+    if (!THEMED) {   // no themes.js: a sunny day
+      scene.fog = new THREE.Fog(0xcfeaff, 25, 90);
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x6b8a4a, 0.95));
+      const sun = new THREE.DirectionalLight(0xfff4dc, 0.65); sun.position.set(5, 12, 4); scene.add(sun);
+      const c = document.createElement('canvas'); c.width = 8; c.height = 256;
+      const x = c.getContext('2d'), g = x.createLinearGradient(0, 0, 0, 256);
+      g.addColorStop(0, '#3d9be9'); g.addColorStop(0.45, '#8fd0ff'); g.addColorStop(0.5, '#e4f6ff'); g.addColorStop(1, '#e4f6ff');
+      x.fillStyle = g; x.fillRect(0, 0, 8, 256);
+      scene.add(new THREE.Mesh(new THREE.SphereGeometry(100, 32, 16), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), side: THREE.BackSide, fog: false })));
+      const ground = new THREE.Mesh(new THREE.CircleGeometry(80, 48), new THREE.MeshLambertMaterial({ color: 0x8cc66a }));
+      ground.rotation.x = -Math.PI / 2; scene.add(ground);
+    }
+    // the village around the crossing is always there
+    const wall = [0xf2e3c9, 0xd9a07a, 0xf7f2ea, 0xc9d7e8, 0xe8c07a], roof = [0x9c3b2e, 0x5b5b66, 0x7a4a2a];
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2 + Math.random() * 0.2, r = 11 + Math.random() * 7;
+      const h = new THREE.Group(), w = 2 + Math.random() * 1.5, d = 2 + Math.random(), ht = 1.8 + Math.random() * 1.2;
+      const body = new THREE.Mesh(new THREE.BoxGeometry(w, ht, d), new THREE.MeshLambertMaterial({ color: wall[i % wall.length] })); body.position.y = ht / 2; h.add(body);
+      const rf = new THREE.Mesh(new THREE.CylinderGeometry(0.01, d * 0.75, 1.2, 4, 1), new THREE.MeshLambertMaterial({ color: roof[i % roof.length] }));
+      rf.scale.x = w / d; rf.rotation.y = Math.PI / 4; rf.position.y = ht + 0.6; h.add(rf);
+      h.position.set(Math.cos(a) * r, 0, Math.sin(a) * r); h.lookAt(0, 0, 0); scene.add(h);
+    }
+    if (THEMED) return;   // the theme brings its own trees
+    const trunk = new THREE.MeshLambertMaterial({ color: 0x6b4423 }), leaf = new THREE.MeshLambertMaterial({ color: 0x3f8f3a });
+    for (let i = 0; i < 30; i++) {
+      const a = Math.random() * 6.283, r = 7 + Math.random() * 20, s = 0.8 + Math.random() * 0.8, t = new THREE.Group();
+      const tr = new THREE.Mesh(new THREE.CylinderGeometry(0.1 * s, 0.14 * s, 1.2 * s, 6), trunk); tr.position.y = 0.6 * s; t.add(tr);
+      const cr = new THREE.Mesh(new THREE.SphereGeometry(0.8 * s, 10, 8), leaf); cr.position.y = 1.7 * s; t.add(cr);
+      t.position.set(Math.cos(a) * r, 0, Math.sin(a) * r); scene.add(t);
+    }
+  })();
+
+  // ---------- canvas helpers ----------
+  function rr(ctx, x, y, w, h, r) {
+    ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+  function fit(ctx, text, maxW, size, weight) {
+    let s = size;
+    do { ctx.font = `${weight} ${s}px ${FONT}`; if (ctx.measureText(text).width <= maxW) break; s -= 2; } while (s > 14);
+    return s;
+  }
+  function wrap(ctx, text, maxW) {
+    const out = [];
+    String(text).split('\n').forEach(par => {
+      const words = par.split(' '); let line = '';
+      words.forEach(w => { const t = line ? line + ' ' + w : w; if (ctx.measureText(t).width > maxW && line) { out.push(line); line = w; } else line = t; });
+      out.push(line);
+    });
+    return out;
+  }
+  function fitLines(ctx, text, maxW, maxLines, size, weight, minSize) {
+    let s = size, lines;
+    while (true) {
+      ctx.font = `${weight} ${s}px ${FONT}`; lines = wrap(ctx, text, maxW);
+      if ((lines.length <= maxLines && lines.every(l => ctx.measureText(l).width <= maxW)) || s <= minSize) break;
+      s -= 2;
+    }
+    return { lines: lines.slice(0, maxLines), size: s };
+  }
+  function drawLines(ctx, f, x, yCenter, lh) {
+    const h = (f.lines.length - 1) * lh, y0 = yCenter - h / 2;
+    f.lines.forEach((l, i) => ctx.fillText(l, x, y0 + i * lh));
+  }
+
+  // ---------- Dutch traffic signs, drawn in code ----------
+  const RED = '#d0202a', BLUE = '#1d5fb4', BLACK = '#111111', WHITE = '#ffffff', ORANGE = '#f6a400';
+  function poly(ctx, pts) { ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath(); }
+  function disc(ctx, x, y, r, col) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = col; ctx.fill(); }
+  function picCar(ctx, x, y, s, col) {
+    ctx.fillStyle = col;
+    rr(ctx, x - s * 0.9, y - s * 0.08, s * 1.8, s * 0.42, s * 0.12); ctx.fill();
+    poly(ctx, [[x - s * 0.55, y - s * 0.06], [x - s * 0.33, y - s * 0.46], [x + s * 0.32, y - s * 0.46], [x + s * 0.6, y - s * 0.06]]); ctx.fill();
+    disc(ctx, x - s * 0.52, y + s * 0.36, s * 0.2, col); disc(ctx, x + s * 0.52, y + s * 0.36, s * 0.2, col);
+  }
+  function picBike(ctx, x, y, s, col) {
+    ctx.strokeStyle = col; ctx.lineWidth = s * 0.1; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    const rw = s * 0.36, ly = y + s * 0.22, lx = x - s * 0.58, fx = x + s * 0.58;
+    [lx, fx].forEach(cx => { ctx.beginPath(); ctx.arc(cx, ly, rw, 0, Math.PI * 2); ctx.stroke(); });
+    ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(x - s * 0.05, ly); ctx.lineTo(x + s * 0.3, y - s * 0.28); ctx.lineTo(x - s * 0.22, y - s * 0.28); ctx.lineTo(x - s * 0.05, ly);
+    ctx.moveTo(lx, ly); ctx.lineTo(x - s * 0.22, y - s * 0.28); ctx.moveTo(fx, ly); ctx.lineTo(x + s * 0.36, y - s * 0.46); ctx.lineTo(x + s * 0.5, y - s * 0.46);
+    ctx.moveTo(x - s * 0.3, y - s * 0.4); ctx.lineTo(x - s * 0.12, y - s * 0.4); ctx.stroke();
+  }
+  function picPed(ctx, x, y, s, col) {
+    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = s * 0.16; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    disc(ctx, x + s * 0.04, y - s * 0.7, s * 0.15, col);
+    ctx.beginPath(); ctx.moveTo(x, y - s * 0.48); ctx.lineTo(x - s * 0.04, y + s * 0.08);
+    ctx.moveTo(x - s * 0.04, y + s * 0.08); ctx.lineTo(x - s * 0.28, y + s * 0.7); ctx.moveTo(x - s * 0.04, y + s * 0.08); ctx.lineTo(x + s * 0.24, y + s * 0.7);
+    ctx.moveTo(x, y - s * 0.4); ctx.lineTo(x - s * 0.3, y - s * 0.05); ctx.moveTo(x, y - s * 0.4); ctx.lineTo(x + s * 0.28, y - s * 0.1); ctx.stroke();
+  }
+  function arrow(ctx, pts, w, col) {
+    const [ax, ay] = pts[pts.length - 2], [bx, by] = pts[pts.length - 1], a = Math.atan2(by - ay, bx - ax), h = w * 1.6;
+    const shaft = pts.slice(0, -1).concat([[bx - Math.cos(a) * h * 1.1, by - Math.sin(a) * h * 1.1]]);
+    ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = 'butt'; ctx.lineJoin = 'miter';
+    ctx.beginPath(); shaft.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke();
+    ctx.fillStyle = col; poly(ctx, [[bx, by], [bx - Math.cos(a) * h * 1.2 + Math.sin(a) * h, by - Math.sin(a) * h * 1.2 - Math.cos(a) * h], [bx - Math.cos(a) * h * 1.2 - Math.sin(a) * h, by - Math.sin(a) * h * 1.2 + Math.cos(a) * h]]); ctx.fill();
+  }
+  function ringSign(ctx, x, y, R, inner) {
+    disc(ctx, x, y, R, RED); disc(ctx, x, y, R * 0.78, inner || WHITE);
+    ctx.lineWidth = R * 0.03; ctx.strokeStyle = WHITE; ctx.beginPath(); ctx.arc(x, y, R * 0.985, 0, Math.PI * 2); ctx.stroke();
+  }
+  function blueDisc(ctx, x, y, R) { disc(ctx, x, y, R, WHITE); disc(ctx, x, y, R * 0.93, BLUE); }
+  function triangle(ctx, x, y, R, down) {
+    const k = down ? -1 : 1, pts = s => [[x, y - k * R * s], [x + R * 1.0 * s, y + k * R * 0.78 * s], [x - R * 1.0 * s, y + k * R * 0.78 * s]];
+    ctx.lineJoin = 'round';
+    poly(ctx, pts(1.02)); ctx.fillStyle = WHITE; ctx.fill(); ctx.lineWidth = R * 0.08; ctx.strokeStyle = WHITE; ctx.stroke();
+    poly(ctx, pts(0.94)); ctx.fillStyle = RED; ctx.fill();
+    poly(ctx, pts(0.62)); ctx.fillStyle = WHITE; ctx.fill();
+    return y + k * R * 0.12;   // visual centre of the white area
+  }
+  function blueSquare(ctx, x, y, R) {
+    ctx.fillStyle = WHITE; rr(ctx, x - R, y - R, R * 2, R * 2, R * 0.12); ctx.fill();
+    ctx.fillStyle = BLUE; rr(ctx, x - R * 0.92, y - R * 0.92, R * 1.84, R * 1.84, R * 0.08); ctx.fill();
+  }
+  function diamond(ctx, x, y, R, stripes) {
+    const d = s => [[x, y - R * s], [x + R * s, y], [x, y + R * s], [x - R * s, y]];
+    poly(ctx, d(1)); ctx.fillStyle = BLACK; ctx.fill();
+    poly(ctx, d(0.95)); ctx.fillStyle = WHITE; ctx.fill();
+    poly(ctx, d(0.6)); ctx.fillStyle = ORANGE; ctx.fill(); ctx.lineWidth = R * 0.03; ctx.strokeStyle = BLACK; ctx.stroke();
+    if (stripes) {
+      ctx.save(); poly(ctx, d(0.95)); ctx.clip();
+      ctx.strokeStyle = BLACK; ctx.lineWidth = R * 0.09;
+      [-0.35, 0, 0.35].forEach(o => { ctx.beginPath(); ctx.moveTo(x - R + o * R, y + R + o * R); ctx.lineTo(x + R + o * R, y - R + o * R); ctx.stroke(); });
+      ctx.restore();
+    }
+  }
+  const SIGN_DRAW = {
+    'verboden-in-te-rijden': (c, x, y, R) => { disc(c, x, y, R, WHITE); disc(c, x, y, R * 0.95, RED); c.fillStyle = WHITE; c.fillRect(x - R * 0.68, y - R * 0.17, R * 1.36, R * 0.34); },
+    'gesloten': (c, x, y, R) => ringSign(c, x, y, R),
+    'verboden-fietsers': (c, x, y, R) => { ringSign(c, x, y, R); picBike(c, x, y, R * 0.55, BLACK); },
+    'verboden-autos': (c, x, y, R) => { ringSign(c, x, y, R); picCar(c, x, y + R * 0.02, R * 0.58, BLACK); },
+    'verboden-voetgangers': (c, x, y, R) => { ringSign(c, x, y, R); picPed(c, x, y, R * 0.6, BLACK); },
+    'max-30': (c, x, y, R) => { ringSign(c, x, y, R); c.fillStyle = BLACK; c.textAlign = 'center'; c.textBaseline = 'middle'; c.font = `900 ${R * 0.85}px ${FONT}`; c.fillText('30', x, y + R * 0.04); },
+    'parkeerverbod': (c, x, y, R) => { ringSign(c, x, y, R, BLUE); c.save(); c.beginPath(); c.arc(x, y, R * 0.78, 0, Math.PI * 2); c.clip(); c.strokeStyle = RED; c.lineWidth = R * 0.2; c.beginPath(); c.moveTo(x - R, y - R); c.lineTo(x + R, y + R); c.stroke(); c.restore(); },
+    'stopverbod': (c, x, y, R) => { ringSign(c, x, y, R, BLUE); c.save(); c.beginPath(); c.arc(x, y, R * 0.78, 0, Math.PI * 2); c.clip(); c.strokeStyle = RED; c.lineWidth = R * 0.2; c.beginPath(); c.moveTo(x - R, y - R); c.lineTo(x + R, y + R); c.moveTo(x + R, y - R); c.lineTo(x - R, y + R); c.stroke(); c.restore(); },
+    'fietspad': (c, x, y, R) => { blueDisc(c, x, y, R); picBike(c, x, y, R * 0.55, WHITE); },
+    'voetpad': (c, x, y, R) => { blueDisc(c, x, y, R); picPed(c, x, y, R * 0.6, WHITE); },
+    'rechtdoor': (c, x, y, R) => { blueDisc(c, x, y, R); arrow(c, [[x, y + R * 0.6], [x, y - R * 0.6]], R * 0.22, WHITE); },
+    'rechtsaf': (c, x, y, R) => { blueDisc(c, x, y, R); arrow(c, [[x - R * 0.25, y + R * 0.6], [x - R * 0.25, y - R * 0.05], [x + R * 0.62, y - R * 0.05]], R * 0.22, WHITE); },
+    'let-op-kruispunt': (c, x, y, R) => { const cy = triangle(c, x, y, R); c.fillStyle = BLACK; c.fillRect(x - R * 0.07, cy - R * 0.33, R * 0.14, R * 0.6); c.fillRect(x - R * 0.3, cy - R * 0.1, R * 0.6, R * 0.14); },
+    'let-op-kinderen': (c, x, y, R) => { const cy = triangle(c, x, y, R); picPed(c, x - R * 0.14, cy, R * 0.34, BLACK); picPed(c, x + R * 0.17, cy + R * 0.07, R * 0.26, BLACK); },
+    'let-op-verkeerslichten': (c, x, y, R) => { const cy = triangle(c, x, y, R); c.fillStyle = BLACK; rr(c, x - R * 0.14, cy - R * 0.34, R * 0.28, R * 0.62, R * 0.06); c.fill(); [RED, ORANGE, '#1f9d3a'].forEach((col, i) => disc(c, x, cy - R * 0.23 + i * R * 0.2, R * 0.07, col)); },
+    'let-op-zebrapad': (c, x, y, R) => { const cy = triangle(c, x, y, R); picPed(c, x, cy - R * 0.03, R * 0.32, BLACK); c.fillStyle = BLACK; for (let i = 0; i < 4; i++) c.fillRect(x - R * 0.4 + i * R * 0.22, cy + R * 0.28, R * 0.13, R * 0.06); },
+    'let-op-fietsers': (c, x, y, R) => { const cy = triangle(c, x, y, R); picBike(c, x, cy + R * 0.06, R * 0.38, BLACK); },
+    'haaientanden': (c, x, y, R) => { triangle(c, x, y, R, true); },
+    'stop': (c, x, y, R) => {
+      const oct = s => Array.from({ length: 8 }, (_, i) => { const a = Math.PI / 8 + i * Math.PI / 4; return [x + Math.cos(a) * R * s, y + Math.sin(a) * R * s]; });
+      poly(c, oct(1)); c.fillStyle = WHITE; c.fill(); poly(c, oct(0.93)); c.fillStyle = RED; c.fill();
+      c.fillStyle = WHITE; c.textAlign = 'center'; c.textBaseline = 'middle'; c.font = `900 ${R * 0.52}px ${FONT}`; c.fillText('STOP', x, y + R * 0.03);
+    },
+    'voorrangsweg': (c, x, y, R) => diamond(c, x, y, R, false),
+    'einde-voorrangsweg': (c, x, y, R) => diamond(c, x, y, R, true),
+    'voorrangskruispunt': (c, x, y, R) => { const cy = triangle(c, x, y, R); c.fillStyle = BLACK; c.fillRect(x - R * 0.09, cy - R * 0.33, R * 0.18, R * 0.62); c.fillRect(x - R * 0.32, cy - R * 0.02, R * 0.64, R * 0.05); },
+    'zebrapad': (c, x, y, R) => {
+      blueSquare(c, x, y, R); poly(c, [[x, y - R * 0.72], [x + R * 0.75, y + R * 0.62], [x - R * 0.75, y + R * 0.62]]); c.fillStyle = WHITE; c.fill();
+      picPed(c, x, y + R * 0.03, R * 0.33, BLACK); c.fillStyle = BLACK; for (let i = 0; i < 4; i++) c.fillRect(x - R * 0.42 + i * R * 0.24, y + R * 0.43, R * 0.14, R * 0.07);
+    },
+    'parkeren': (c, x, y, R) => { blueSquare(c, x, y, R); c.fillStyle = WHITE; c.textAlign = 'center'; c.textBaseline = 'middle'; c.font = `900 ${R * 1.25}px ${FONT}`; c.fillText('P', x, y + R * 0.08); },
+    'doodlopend': (c, x, y, R) => { blueSquare(c, x, y, R); c.fillStyle = WHITE; c.fillRect(x - R * 0.13, y - R * 0.3, R * 0.26, R * 0.95); c.fillStyle = RED; c.fillRect(x - R * 0.5, y - R * 0.62, R * 1.0, R * 0.3); },
+    'eenrichtingsweg': (c, x, y, R) => { blueSquare(c, x, y, R); arrow(c, [[x - R * 0.62, y], [x + R * 0.62, y]], R * 0.24, WHITE); },
+  };
+  const signById = {}; SIGNS.forEach(s => { if (SIGN_DRAW[s.id]) signById[s.id] = s; });
+  const SIGN_LIST = SIGNS.filter(s => SIGN_DRAW[s.id] && FAMS[s.familie]);
+  function drawSign(ctx, id, x, y, R) { const f = SIGN_DRAW[id]; if (f) { ctx.save(); f(ctx, x, y, R); ctx.restore(); } }
+  function signTexture(id, size) {
+    const c = document.createElement('canvas'); c.width = c.height = size || 256;
+    drawSign(c.getContext('2d'), id, c.width / 2, c.height / 2, c.width * 0.46);
+    const t = new THREE.CanvasTexture(c); t.minFilter = THREE.LinearFilter; return t;
+  }
+
+  // ---------- panels and buttons ----------
+  const C = Object.assign({   // colours of panels and buttons; the theme overrides them
+    panel: 'rgba(8,24,58,0.92)', edge: 'rgba(170,210,255,0.7)', line: 'rgba(170,210,255,0.3)',
+    accent: '#ffcf40', text: '#dfe8ff', muted: '#b8c7ea', tip: '#fff3c4', startInk: '#3a2200', btn: {}
+  }, THEMED && THEMA.ui || {});
+  const interactive = [];
+  function canvasPlane(w, h, cw) {
+    const c = document.createElement('canvas'); c.width = cw; c.height = Math.round(cw * h / w);
+    const ctx = c.getContext('2d'), tex = new THREE.CanvasTexture(c);
+    tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false; tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, fog: false }));
+    return { mesh, c, ctx, update() { tex.needsUpdate = true; } };
+  }
+  const BTN = Object.assign({ idle: ['#5a95ff', '#2a5bdb'], good: ['#46e591', '#16a058'], bad: ['#ff7477', '#cc2d33'], dim: ['#7a86a3', '#56607c'],
+                start: ['#ffd65a', '#f29d0b'], lock: ['#9aa3b8', '#79829a'], done: ['#46c2e5', '#1d8fb8'] }, C.btn);
+  function makeButton(w, h, cw, maxLines) {
+    const p = canvasPlane(w, h, cw);
+    p.enabled = true; p.state = 'idle'; p.mesh.userData.btn = p;
+    p.draw = function (label, state, sign) {
+      this.state = state || 'idle'; this.label = label;
+      const { ctx, c } = this, [a, b] = BTN[this.state], r = Math.min(40, c.height * 0.3);
+      ctx.clearRect(0, 0, c.width, c.height);
+      ctx.fillStyle = 'rgba(0,0,0,0.3)'; rr(ctx, 6, 12, c.width - 12, c.height - 16, r); ctx.fill();
+      const g = ctx.createLinearGradient(0, 0, 0, c.height); g.addColorStop(0, a); g.addColorStop(1, b);
+      ctx.fillStyle = g; rr(ctx, 6, 4, c.width - 12, c.height - 18, r); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 5; ctx.stroke();
+      if (sign) { drawSign(ctx, sign, c.width / 2, (c.height - 14) / 2 + 2, (c.height - 14) * 0.4); this.update(); return; }
+      ctx.fillStyle = this.state === 'start' ? C.startInk : '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const ml = maxLines || 1, inner = c.height - 30;
+      const f = fitLines(ctx, label, c.width - 60, ml, Math.min(64, inner * (ml === 1 ? 0.6 : 0.42)), ml === 1 ? 900 : 800, 18);
+      drawLines(ctx, f, c.width / 2, (c.height - 14) / 2 + 3, f.size * 1.14);
+      this.update();
+    };
+    interactive.push(p.mesh);
+    return p;
+  }
+  function panelBg(ctx, c, r) {
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.fillStyle = C.panel; rr(ctx, 6, 6, c.width - 12, c.height - 12, r); ctx.fill();
+    ctx.strokeStyle = C.edge; ctx.lineWidth = 6; ctx.stroke();
+  }
+
+  // ---------- sound ----------
+  let actx = null;
+  function ensureAudio() { try { if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); } catch (e) {} }
+  function tone(f, t0, dur, type, vol) {
+    if (!actx) return;
+    const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime + t0;
+    o.type = type; o.frequency.setValueAtTime(f, t);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur + 0.05);
+  }
+  function sfx(k) {
+    ensureAudio();
+    if (k === 'click') tone(620, 0, 0.1, 'sine', 0.14);
+    if (k === 'tap') tone(760, 0, 0.09, 'triangle', 0.16);
+    if (k === 'good') { tone(660, 0, 0.16, 'triangle', 0.2); tone(880, 0.09, 0.16, 'triangle', 0.2); tone(1320, 0.18, 0.28, 'triangle', 0.18); }
+    if (k === 'bad') { tone(260, 0, 0.2, 'square', 0.06); tone(196, 0.15, 0.3, 'square', 0.06); }
+    if (k === 'crash' && actx) {
+      const n = actx.sampleRate * 0.7 | 0, buf = actx.createBuffer(1, n, actx.sampleRate), d = buf.getChannelData(0);
+      for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 2.5);
+      const src = actx.createBufferSource(), g = actx.createGain(); g.gain.value = 0.35; src.buffer = buf; src.connect(g).connect(actx.destination); src.start();
+      tone(110, 0, 0.4, 'sawtooth', 0.16); tone(70, 0.05, 0.5, 'square', 0.1);
+    }
+    if (k === 'honk') { tone(392, 0, 0.32, 'square', 0.07); tone(494, 0, 0.32, 'square', 0.05); }
+    if (k === 'win') [523, 659, 784, 1047].forEach((f, i) => tone(f, i * 0.12, 0.32, 'triangle', 0.18));
+    if (k === 'fail') [440, 392, 330].forEach((f, i) => tone(f, i * 0.16, 0.3, 'triangle', 0.14));
+  }
+
+  // ---------- UI ----------
+  const ui = new THREE.Group(); scene.add(ui);
+  const Z = -2.4;
+  const S = canvasPlane(1.5, 0.17, 1024); ui.add(S.mesh);
+  const Q = canvasPlane(1.8, 0.9, 1024); ui.add(Q.mesh);
+  const ans = [];
+  [[-0.46, 1.38], [0.46, 1.38], [-0.46, 1.02], [0.46, 1.02]].forEach(([x, y], i) => {
+    const b = makeButton(0.88, 0.32, 768, 3); b.mesh.position.set(x, y, Z + 0.08); b.index = i; b.onSelect = () => answer(b); ui.add(b.mesh); ans.push(b);
+  });
+  const contBtn = makeButton(1.3, 0.24, 1024, 1); contBtn.mesh.position.set(0, 1.95, Z + 0.06); ui.add(contBtn.mesh);
+  const lvlBtns = LVLS.map((l, i) => {
+    const b = makeButton(0.88, 0.17, 768, 1); b.mesh.position.set(i % 2 ? 0.46 : -0.46, 1.66 - Math.floor(i / 2) * 0.2, Z + 0.06);
+    b.onSelect = () => { if (isOpen(i)) { sfx('click'); openIntro(i); } else sfx('bad'); }; ui.add(b.mesh); return b;
+  });
+  const goBtn = makeButton(0.9, 0.26, 768, 1); goBtn.mesh.position.set(0, 1.25, Z + 0.06); goBtn.onSelect = () => { sfx('click'); startLevel(); }; ui.add(goBtn.mesh);
+  const backBtn = makeButton(0.5, 0.2, 512, 1); backBtn.mesh.position.set(-0.75, 1.25, Z + 0.06); backBtn.onSelect = () => { sfx('click'); showMap(); }; ui.add(backBtn.mesh);
+  const wijzerBtn = makeButton(0.5, 0.15, 512, 1); wijzerBtn.onSelect = () => { sfx('click'); openWijzer(); }; ui.add(wijzerBtn.mesh);
+  const resBtns = [0, 1, 2].map(i => { const b = makeButton(0.58, 0.24, 640, 1); b.mesh.position.set(-0.62 + i * 0.62, 1.28, Z + 0.06); ui.add(b.mesh); return b; });
+
+  // ---------- the toy intersection ----------
+  const DIO_SCALE = 0.1;
+  const dioRoot = new THREE.Group(); ui.add(dioRoot); dioRoot.position.set(0, 0.95, -1.25);
+  const dio = new THREE.Group(); dio.scale.setScalar(DIO_SCALE); dio.position.y = 0.012; dioRoot.add(dio);
+  (function table() {
+    const wood = new THREE.MeshLambertMaterial({ color: 0xa8774a });
+    const top = new THREE.Mesh(new THREE.BoxGeometry(1.62, 0.04, 1.62), wood); top.position.y = -0.02; dioRoot.add(top);
+    [[-0.74, -0.74], [0.74, -0.74], [-0.74, 0.74], [0.74, 0.74]].forEach(([x, z]) => { const l = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.5, 0.05), wood); l.position.set(x, -0.77, z); dioRoot.add(l); });
+    const grass = new THREE.Mesh(new THREE.BoxGeometry(15.6, 0.1, 15.6), new THREE.MeshLambertMaterial({ color: 0x79b85a })); grass.position.y = -0.05; dio.add(grass);
+    const asphalt = new THREE.MeshLambertMaterial({ color: 0x4a4e57 }), walk = new THREE.MeshLambertMaterial({ color: 0xc9c4b8 }), white = new THREE.MeshBasicMaterial({ color: 0xf4f4f4 });
+    [[0, 0, 2, 15.6], [0, 0, 15.6, 2]].forEach(([x, z, w, d]) => { const r = new THREE.Mesh(new THREE.BoxGeometry(w, 0.04, d), asphalt); r.position.set(x, 0.02, z); dio.add(r); });
+    // sidewalks along the four arms
+    [[1.35, 1], [-1.35, 1], [1.35, -1], [-1.35, -1]].forEach(([o, s]) => {
+      const a = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.07, 6.8), walk); a.position.set(o, 0.035, s * 4.4); dio.add(a);
+      const b = new THREE.Mesh(new THREE.BoxGeometry(6.8, 0.07, 0.7), walk); b.position.set(s * 4.4, 0.035, o); dio.add(b);
+    });
+    // dashed centre lines
+    for (let d = 1.6; d < 7.6; d += 0.9) [[0, d], [0, -d], [d, 0], [-d, 0]].forEach(([x, z]) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(x ? 0.45 : 0.06, 0.01, x ? 0.06 : 0.45), white); m.position.set(x, 0.045, z); dio.add(m);
+    });
+    // little houses on the corners
+    const hc = [0xf2e3c9, 0xd9a07a, 0xc9d7e8, 0xf7f2ea], rc = [0x9c3b2e, 0x5b5b66];
+    [[1, 1], [-1, 1], [1, -1], [-1, -1]].forEach(([sx, sz], i) => {
+      const h = new THREE.Group();
+      const b = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.3, 1.8), new THREE.MeshLambertMaterial({ color: hc[i] })); b.position.y = 0.65; h.add(b);
+      const r = new THREE.Mesh(new THREE.ConeGeometry(1.4, 0.9, 4), new THREE.MeshLambertMaterial({ color: rc[i % 2] })); r.position.y = 1.75; r.rotation.y = Math.PI / 4; h.add(r);
+      h.position.set(sx * 4.6, 0, sz * 4.6); dio.add(h);
+    });
+  })();
+  dioRoot.visible = false;
+
+  // geometry helpers: arms and lanes (traffic drives on the right)
+  const ARMS = { noord: [0, -1], zuid: [0, 1], oost: [1, 0], west: [-1, 0] };
+  const v3 = (x, z) => new THREE.Vector3(x, 0, z);
+  const armVec = a => v3(ARMS[a][0], ARMS[a][1]);
+  const rightOf = t => v3(-t.z, t.x);
+  const armOf = v => Object.keys(ARMS).find(k => Math.abs(ARMS[k][0] - Math.round(v.x)) < 0.01 && Math.abs(ARMS[k][1] - Math.round(v.z)) < 0.01);
+  function armGroup(a) { const g = new THREE.Group(), v = armVec(a); g.rotation.y = Math.atan2(v.x, v.z); return g; }   // local x = right lane side, local z = distance out along the arm
+
+  const sit = new THREE.Group(); dio.add(sit);
+  const COLORS = { rood: 0xe53935, blauw: 0x1e88e5, geel: 0xfdd835, groen: 0x43a047, oranje: 0xfb8c00, paars: 0x8e24aa, wit: 0xf5f5f5 };
+  const lightSets = {};
+  let parts = [], movers = [], curSit = null, sitWrong = false, lights = null;
+  // 'pick': player numbers the road users · 'play': it plays out in that order · 'crash' · 'replay': the right order · 'done'
+  let sitMode = 'pick', chosen = [], crash = null, sitTimer = 0, crashFx = [], slowmo = 0, camShake = 0;
+
+  function clearSit() {
+    while (sit.children.length) { const o = sit.children.pop(); o.traverse(n => { if (n.material && n.material.map) n.material.map.dispose(); }); }
+    crashLight.intensity = 0; parts = []; movers = []; crashFx = []; for (const k in lightSets) delete lightSets[k]; lights = null;
+  }
+  function badgeSprite(text, bg) {
+    const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
+    disc(x, 64, 64, 58, '#ffffff'); disc(x, 64, 64, 50, bg);
+    x.fillStyle = '#fff'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = `900 70px ${FONT}`; x.fillText(text, 64, 68);
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false }));
+    s.scale.set(0.9, 0.9, 1); s.renderOrder = 10; return s;
+  }
+  function addSign(a, id) {
+    const g = armGroup(a), pole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.4, 6), new THREE.MeshLambertMaterial({ color: 0x9aa0a8 }));
+    pole.position.set(1.45, 0.7, 1.95); g.add(pole);
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: signTexture(id, 128) })); sp.scale.set(0.85, 0.85, 1); sp.position.set(1.45, 1.65, 1.95); g.add(sp);
+    sit.add(g);
+  }
+  function addMarkings(a, kind) {
+    const g = armGroup(a), white = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+    if (kind === 'haaientanden') {
+      const sh = new THREE.Shape(); sh.moveTo(-0.1, 0); sh.lineTo(0.1, 0); sh.lineTo(0, 0.24); sh.closePath();
+      const geo = new THREE.ShapeGeometry(sh); geo.rotateX(Math.PI / 2);
+      for (let i = 0; i < 4; i++) { const m = new THREE.Mesh(geo, white); m.position.set(0.14 + i * 0.24, 0.05, 1.1); g.add(m); }
+    } else if (kind === 'stop') {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.01, 0.12), white); m.position.set(0.5, 0.05, 1.15); g.add(m);
+    }
+    sit.add(g);
+  }
+  function addZebra(a) {
+    const g = armGroup(a), white = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    for (let i = 0; i < 6; i++) { const m = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.01, 0.8), white); m.position.set(-0.85 + i * 0.34, 0.05, 2.0); g.add(m); }
+    sit.add(g);
+  }
+  function addLight(a) {
+    const g = armGroup(a), grey = new THREE.MeshLambertMaterial({ color: 0x3a3f47 });
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.6, 6), grey); pole.position.set(1.3, 0.8, 1.25); g.add(pole);
+    const box = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.75, 0.3), new THREE.MeshLambertMaterial({ color: 0x1b1d22 })); box.position.set(1.3, 1.85, 1.25); g.add(box);
+    const mk = (y) => { const m = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 8), new THREE.MeshBasicMaterial({ color: 0x333333 })); m.position.set(1.3, y, 1.25); m.scale.set(1.25, 1, 1.25); g.add(m); return m; };
+    lightSets[a] = { red: mk(2.07), orange: mk(1.85), green: mk(1.63) };
+    sit.add(g);
+  }
+  function setLights(map) {
+    lights = Object.assign({}, map);
+    for (const a in lightSets) {
+      const L = lightSets[a], st = lights[a];
+      L.red.material.color.setHex(st === 'rood' ? 0xff2a2a : 0x3a1212);
+      L.orange.material.color.setHex(0x3a2a10);
+      L.green.material.color.setHex(st === 'groen' ? 0x2aff6a : 0x103a1c);
+    }
+  }
+
+  // ---------- road users ----------
+  function makeModel(type, kleur) {
+    const g = new THREE.Group(), L = c => new THREE.MeshLambertMaterial({ color: c });
+    const wheel = new THREE.CylinderGeometry(0.16, 0.16, 0.12, 12); wheel.rotateZ(Math.PI / 2);
+    const extra = {};
+    if (type === 'auto' || type === 'ambulance') {
+      const amb = type === 'ambulance', col = amb ? 0xf7f7f2 : (COLORS[kleur] || COLORS.rood);
+      const len = amb ? 1.7 : 1.5;
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.72, amb ? 0.62 : 0.34, len), L(col)); body.position.y = amb ? 0.48 : 0.32; g.add(body);
+      if (!amb) { const cab = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.28, 0.8), L(0xcfe6ff)); cab.position.set(0, 0.62, -0.08); g.add(cab); }
+      else {
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.1, len + 0.01), L(0xe53935)); stripe.position.y = 0.45; g.add(stripe);
+        const glass = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.22, 0.05), L(0xcfe6ff)); glass.position.set(0, 0.62, len / 2); g.add(glass);
+        extra.blue = [-0.18, 0.18].map(x => { const m = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 8), new THREE.MeshBasicMaterial({ color: 0x2255ff })); m.position.set(x, 0.84, 0.45); g.add(m); return m; });
+      }
+      [[-0.37, 0.5], [0.37, 0.5], [-0.37, -0.5], [0.37, -0.5]].forEach(([x, z]) => { const w = new THREE.Mesh(wheel, L(0x1a1a1a)); w.position.set(x, 0.16, z * len / 1.5); g.add(w); });
+      extra.blink = { left: [], right: [] };
+      [[-1, 'left'], [1, 'right']].forEach(([sx, side]) => [len / 2, -len / 2].forEach(z => {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.08, 0.06), new THREE.MeshBasicMaterial({ color: 0x5a3a00 }));
+        m.position.set(-sx * 0.32, amb ? 0.3 : 0.36, z); extra.blink[side].push(m); g.add(m);
+      }));
+      extra.hitR = 1.0; extra.badgeY = amb ? 1.5 : 1.35;
+    } else if (type === 'fiets') {
+      // thin cylinder from point a to point b
+      const bar = (a, b, r, mat) => {
+        const va = new THREE.Vector3(...a), vb = new THREE.Vector3(...b), d = vb.clone().sub(va);
+        const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, d.length(), 8), mat);
+        m.position.copy(va).addScaledVector(d, 0.5); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()); g.add(m); return m;
+      };
+      const shirt = [0xffc107, 0xe91e63, 0x00bcd4, 0x8bc34a][Math.floor(Math.random() * 4)];
+      const frameM = L(0x2a7de1), tyre = L(0x1a1a1a), skin = L(0xf2c9a0), shirtM = L(shirt), pants = L(0x37474f), metal = L(0xb0bec5);
+      // wheels: chunky tyres with a light rim + hub so they read from any angle
+      const tor = new THREE.TorusGeometry(0.22, 0.05, 8, 20), rim = new THREE.TorusGeometry(0.16, 0.02, 6, 20);
+      [0.34, -0.34].forEach(z => {
+        const w = new THREE.Mesh(tor, tyre); w.rotation.y = Math.PI / 2; w.position.set(0, 0.26, z); g.add(w);
+        const r = new THREE.Mesh(rim, metal); r.rotation.y = Math.PI / 2; r.position.set(0, 0.26, z); g.add(r);
+        bar([-0.06, 0.26, z], [0.06, 0.26, z], 0.035, metal);
+        bar([0, 0.1, z], [0, 0.42, z], 0.012, metal); bar([0, 0.26, z - 0.16], [0, 0.26, z + 0.16], 0.012, metal);
+      });
+      // frame (diamond), fork, saddle, handlebar
+      const bb = [0, 0.3, -0.02], seat = [0, 0.62, -0.13], head = [0, 0.62, 0.22], rear = [0, 0.26, -0.34], front = [0, 0.26, 0.34];
+      bar(bb, seat, 0.03, frameM); bar(bb, head, 0.035, frameM); bar(seat, head, 0.03, frameM);
+      bar(bb, rear, 0.022, frameM); bar(seat, rear, 0.022, frameM); bar(head, front, 0.025, metal);
+      const saddle = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.05, 0.2), tyre); saddle.position.set(0, 0.66, -0.13); g.add(saddle);
+      bar(head, [0, 0.74, 0.24], 0.022, metal); bar([-0.26, 0.74, 0.24], [0.26, 0.74, 0.24], 0.025, metal);
+      [-0.26, 0.26].forEach(x => bar([x, 0.74, 0.24], [x * 1.15, 0.74, 0.24], 0.035, tyre));
+      // lights
+      const fl = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), new THREE.MeshBasicMaterial({ color: 0xfff6c0 })); fl.position.set(0, 0.68, 0.28); g.add(fl);
+      const rl = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.05, 0.03), new THREE.MeshBasicMaterial({ color: 0xff2020 })); rl.position.set(0, 0.5, -0.3); g.add(rl);
+      // rider: legs to pedals, leaning torso, arms to the handlebar
+      [-1, 1].forEach(sx => {
+        const hip = [sx * 0.08, 0.7, -0.1], knee = [sx * 0.1, 0.56, 0.12], foot = [sx * 0.11, 0.3, 0.0];
+        bar(hip, knee, 0.05, pants); bar(knee, foot, 0.042, pants);
+        bar([sx * 0.15, 1.0, -0.02], [sx * 0.24, 0.76, 0.22], 0.035, shirtM);
+      });
+      const bodyM = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.13, 0.4, 10), shirtM); bodyM.position.set(0, 0.88, -0.06); bodyM.rotation.x = 0.35; g.add(bodyM);
+      const headM = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 10), skin); headM.position.set(0, 1.18, 0.04); g.add(headM);
+      const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), shirtM); helmet.position.set(0, 1.2, 0.04); g.add(helmet);
+      extra.scale = 1.15;
+      extra.hitR = 0.8; extra.badgeY = 1.6;
+    } else {
+      const shirt = [0xff7043, 0x7e57c2, 0x26a69a, 0xffca28][Math.floor(Math.random() * 4)];
+      const legs = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.4, 8), L(0x37474f)); legs.position.y = 0.2; g.add(legs);
+      const bodyM = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.36, 10), L(shirt)); bodyM.position.y = 0.56; g.add(bodyM);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 10), L(0xf2c9a0)); head.position.y = 0.84; g.add(head);
+      extra.hitR = 0.65; extra.badgeY = 1.25;
+    }
+    const hit = new THREE.Mesh(new THREE.SphereGeometry(extra.hitR, 10, 8), new THREE.MeshBasicMaterial({ visible: false })); hit.position.y = 0.5; g.add(hit);
+    return { g, hit, extra };
+  }
+  function vehiclePath(p) {
+    const aIn = armVec(p.van), t = aIn.clone().negate(), rIn = rightOf(t);
+    const outDir = p.naar === 'rechtsaf' ? rightOf(t) : p.naar === 'linksaf' ? rightOf(t).negate() : t.clone();
+    const rOut = rightOf(outDir), off = p.type === 'fiets' ? 0.86 : 0.42;
+    const zebraHere = (curSit.zebrapad || []).includes(p.van);
+    const stopD = p.type === 'fiets' ? (zebraHere ? 3.1 : 1.75) : (zebraHere ? 3.4 : 2.0);   // wait behind the zebra crossing
+    const start = aIn.clone().multiplyScalar(stopD).addScaledVector(rIn, off);
+    const P0 = aIn.clone().multiplyScalar(1.05).addScaledVector(rIn, off);
+    const P2 = outDir.clone().multiplyScalar(1.05).addScaledVector(rOut, off);
+    const end = outDir.clone().multiplyScalar(8.5).addScaledVector(rOut, off);
+    const path = new THREE.CurvePath();
+    path.add(new THREE.LineCurve3(start, P0));
+    if (p.naar === 'rechtdoor' || !p.naar) path.add(new THREE.LineCurve3(P0, P2));
+    else { const ctrl = P0.clone().addScaledVector(t, P2.clone().sub(P0).dot(t)); path.add(new THREE.QuadraticBezierCurve3(P0, ctrl, P2)); }
+    path.add(new THREE.LineCurve3(P2, end));
+    return path;
+  }
+  function pedPath(p) {
+    const a = armVec(p.bij), perp = rightOf(a.clone().negate());
+    const s = a.clone().multiplyScalar(2.0).addScaledVector(perp, -1.45), e = a.clone().multiplyScalar(2.0).addScaledVector(perp, 1.45);
+    const path = new THREE.CurvePath(); path.add(new THREE.LineCurve3(s, e)); return path;
+  }
+  function placeOnPath(p, u) {
+    const pos = p.path.getPointAt(Math.min(1, u)), tan = p.path.getTangentAt(Math.min(0.999, u));
+    // pure yaw; YXZ order so the shake roll (rotation.z) stays around the vehicle's own forward axis
+    p.g.position.set(pos.x, 0.04, pos.z); p.g.rotation.order = 'YXZ'; p.g.rotation.y = Math.atan2(tan.x, tan.z);
+  }
+  function setupSituation(key) {
+    clearSit(); curSit = SITS[key]; sitWrong = false; sitMode = 'pick'; chosen = []; crash = null; sitTimer = 0;
+    if (!curSit) return false;
+    const zebras = curSit.zebrapad || [], borden = curSit.borden || {};
+    zebras.forEach(a => ARMS[a] && addZebra(a));
+    for (const a in borden) if (ARMS[a]) { const id = borden[a]; addSign(a, id); if (id === 'haaientanden' || id === 'stop') addMarkings(a, id); }
+    if (curSit.lichten) { Object.keys(ARMS).forEach(addLight); setLights(curSit.lichten); }
+    (curSit.weggebruikers || []).forEach(def => {
+      const p = Object.assign({}, def);
+      if (p.type === 'voetganger' ? !ARMS[p.bij] : !ARMS[p.van]) return;
+      const m = makeModel(p.type, p.kleur);
+      Object.assign(p, m, { done: false, moving: false, u: 0 });
+      p.path = p.type === 'voetganger' ? pedPath(p) : vehiclePath(p);
+      p.len = p.path.getLength();
+      p.speed = { auto: 4.2, ambulance: 4.8, fiets: 2.8, voetganger: 1.3 }[p.type] || 3;
+      if (p.type !== 'voetganger') {
+        const tubeEnd = Math.min(1, (p.len - 5) / p.len);
+        const pts = []; for (let i = 0; i <= 40; i++) pts.push(p.path.getPointAt(i / 40 * tubeEnd));
+        const tube = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 48, 0.07, 6, false),
+          new THREE.MeshBasicMaterial({ color: p.type === 'fiets' ? 0x00bcd4 : (p.type === 'ambulance' ? 0xffffff : (COLORS[p.kleur] || 0xffffff)), transparent: true, opacity: 0.55, depthWrite: false }));
+        tube.position.y = 0.07; sit.add(tube); p.tube = tube;
+      }
+      placeOnPath(p, 0);
+      p.g.traverse(n => { if (n.isMesh) n.userData.part = p; });
+      sit.add(p.g); parts.push(p);
+    });
+    return true;
+  }
+  const nameOf = p => p.type === 'voetganger' ? 'de voetganger' : p.type === 'fiets' ? 'de fietser' : p.type === 'ambulance' ? 'de ambulance' : `de ${p.kleur || ''} auto`.replace('  ', ' ');
+  const cap = str => str.charAt(0).toUpperCase() + str.slice(1);
+  function setBadge(p, text, bg) {
+    if (p.badge) p.g.remove(p.badge);
+    p.badge = null; if (!text) return;
+    p.badge = badgeSprite(text, bg); p.badge.position.y = p.extra.badgeY; p.g.add(p.badge);
+  }
+  function tapPart(p) {
+    if (phase !== 'kruis' || sitMode !== 'pick') return;
+    const i = chosen.indexOf(p);
+    if (i >= 0) { chosen.splice(i).forEach(q => setBadge(q, null)); sfx('click'); drawKruisPanel(null); return; }   // tap again = take the number (and later ones) back
+    chosen.push(p); setBadge(p, String(chosen.length), '#2a6fd6'); sfx('tap');
+    if (chosen.length >= curSit.volgorde.length) startPlay(); else drawKruisPanel(null);
+  }
+  function startPlay() {
+    sitMode = 'play'; sitTimer = 0.7;
+    const k = chosen.findIndex((p, i) => p.id !== curSit.volgorde[i]);
+    movers = k < 0 ? chosen.slice() : chosen.slice(0, k);
+    crash = k < 0 ? null : planCrash(chosen[k], parts.find(q => q.id === curSit.volgorde[k]));
+    drawKruisPanel(null);
+  }
+  // x drives too early, y had right of way: time both so they reach the spot where their paths meet together
+  const RAD = { auto: 0.55, ambulance: 0.6, fiets: 0.4, voetganger: 0.25 };
+  function planCrash(x, y) {
+    const N = 80, inside = v => Math.abs(v.x) < 2.6 && Math.abs(v.z) < 2.6;
+    const px = [], py = [];
+    for (let i = 1; i <= N; i++) { px.push(x.path.getPointAt(i / N)); py.push(y.path.getPointAt(i / N)); }
+    let best = { d: Infinity, ux: 0.3, uy: 0.3 };
+    px.forEach((a, i) => { if (inside(a)) py.forEach((b, j) => { if (!inside(b)) return; const d = a.distanceTo(b); if (d < best.d) best = { d, ux: (i + 1) / N, uy: (j + 1) / N }; }); });
+    const tx = best.ux * x.len / x.speed, ty = best.uy * y.len / y.speed, T = Math.max(tx, ty);
+    x.delay = T - tx; y.delay = T - ty;
+    return { x, y, ux: best.ux, uy: best.uy, near: best.d > RAD[x.type] + RAD[y.type] + 0.3, started: false, badge: null };
+  }
+  // ---- crash effects: everything lives in `sit`, so clearSit()/startReplay() clean it up ----
+  const FX_BOX = new THREE.BoxGeometry(1, 1, 1), FX_BALL = new THREE.SphereGeometry(1, 8, 6);
+  function starSprite(col) {
+    const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d');
+    x.fillStyle = col; x.strokeStyle = '#7a4b00'; x.lineWidth = 3; x.beginPath();
+    for (let i = 0; i < 10; i++) { const r = i % 2 ? 12 : 28, a = -Math.PI / 2 + i * Math.PI / 5; x.lineTo(32 + Math.cos(a) * r, 32 + Math.sin(a) * r); }
+    x.closePath(); x.fill(); x.stroke();
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false })); sp.scale.set(0.35, 0.35, 1); sp.renderOrder = 11; return sp;
+  }
+  const crashLight = new THREE.PointLight(0xffb040, 0, 1.4); dio.add(crashLight);   // always there (intensity 0), so a crash doesn't trigger a shader recompile
+  function addFx(mesh, o) { if (mesh) sit.add(mesh); crashFx.push(Object.assign({ mesh, age: 0, life: 1 }, o)); }
+  function dropFx(f) {
+    const m = f.mesh; if (!m) { crashLight.intensity = 0; return; }
+    sit.remove(m);
+    if (m.material.map) m.material.map.dispose();
+    m.material.dispose(); if (!m.isSprite && m.geometry !== FX_BOX && m.geometry !== FX_BALL) m.geometry.dispose();
+  }
+  const MASS = { auto: 1, ambulance: 1.3, fiets: 0.5, voetganger: 0.4 };
+  function doCrash() {
+    const { x, y, near } = crash; sitMode = 'crash'; sitTimer = 4.0;
+    const mid = x.g.position.clone().add(y.g.position).multiplyScalar(0.5); mid.y = 0.5;
+    crash.badge = badgeSprite(near ? '!' : '💥', near ? '#f0a020' : '#cc2d33'); crash.badge.position.set(mid.x, 1.6, mid.z); crash.badge.scale.set(0.01, 0.01, 1); sit.add(crash.badge);
+    addFx(crash.badge, { kind: 'pop', life: 99, base: near ? 1.2 : 1.9 });
+    sfx(near ? 'honk' : 'crash'); buzz(1, 300);
+    if (!sitWrong) { sitWrong = true; markWrong(); }
+    drawKruisPanel({ good: false, title: `${near ? 'Bijna een ongeluk!' : 'Botsing! 💥'} ${cap(nameOf(y))} mocht eerst.`, text: curSit.uitleg || '' });
+    [x, y].forEach(p => p.shake = near ? 0.5 : 0.9);
+    if (near) {   // just a screech and a puff of tyre smoke
+      for (let i = 0; i < 6; i++) addFx(new THREE.Mesh(FX_BALL, new THREE.MeshLambertMaterial({ color: 0xd8d8d8, transparent: true, opacity: 0.7, depthWrite: false })),
+        { kind: 'smoke', life: 1.2, pos: mid.clone().setY(0.2), vel: new THREE.Vector3((Math.random() - 0.5) * 1.5, 0.6, (Math.random() - 0.5) * 1.5), size: 0.15 });
+      return;
+    }
+    slowmo = 0.7; camShake = 0.55;
+    const fl = document.getElementById('flash'); fl.classList.remove('go'); void fl.offsetWidth; fl.classList.add('go');
+    // flash light + shockwave ring + fireball
+    crashLight.position.copy(mid); addFx(null, { kind: 'light', life: 0.6 });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.8, 1, 32), new THREE.MeshBasicMaterial({ color: 0xfff1a0, transparent: true, side: THREE.DoubleSide, depthWrite: false }));
+    ring.rotation.x = -Math.PI / 2; addFx(ring, { kind: 'ring', life: 0.55, pos: mid.clone().setY(0.08) });
+    addFx(new THREE.Mesh(FX_BALL, new THREE.MeshBasicMaterial({ color: 0xffd040, transparent: true, depthWrite: false })), { kind: 'ball', life: 0.35, pos: mid.clone() });
+    // debris in the vehicles' own colours, sparks and smoke
+    const cols = []; [x, y].forEach(p => p.g.traverse(n => { if (n.isMesh && n.material.visible !== false && n.material.color) cols.push(n.material.color.getHex()); }));
+    for (let i = 0; i < 34; i++) {
+      const sz = 0.06 + Math.random() * 0.12, a = Math.random() * Math.PI * 2, sp = 2 + Math.random() * 4;
+      addFx(new THREE.Mesh(FX_BOX, new THREE.MeshLambertMaterial({ color: cols[Math.random() * cols.length | 0] || 0x888888, transparent: true })),
+        { kind: 'debris', life: 2.6 + Math.random(), size: sz, pos: mid.clone(), vel: new THREE.Vector3(Math.cos(a) * sp, 3 + Math.random() * 4, Math.sin(a) * sp),
+          rot: new THREE.Vector3(Math.random() * 12, Math.random() * 12, Math.random() * 12) });
+    }
+    for (let i = 0; i < 26; i++) {
+      const a = Math.random() * Math.PI * 2, sp = 4 + Math.random() * 6;
+      addFx(new THREE.Mesh(FX_BALL, new THREE.MeshBasicMaterial({ color: [0xffffff, 0xfff176, 0xffb300, 0xff6d00][i % 4], transparent: true })),
+        { kind: 'spark', life: 0.35 + Math.random() * 0.4, size: 0.035, pos: mid.clone(), vel: new THREE.Vector3(Math.cos(a) * sp, 1 + Math.random() * 5, Math.sin(a) * sp) });
+    }
+    for (let i = 0; i < 10; i++) addFx(new THREE.Mesh(FX_BALL, new THREE.MeshLambertMaterial({ color: i % 3 ? 0x8a8a8a : 0x4a4a4a, transparent: true, opacity: 0.75, depthWrite: false })),
+      { kind: 'smoke', life: 2 + Math.random(), size: 0.2, pos: mid.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.6, 0, (Math.random() - 0.5) * 0.6)), vel: new THREE.Vector3((Math.random() - 0.5) * 0.8, 0.7 + Math.random() * 0.5, (Math.random() - 0.5) * 0.8) });
+    // knock the two apart (the lighter one flies further) and make them dizzy
+    [[x, y], [y, x]].forEach(([p, o], i) => {
+      const away = p.g.position.clone().sub(o.g.position).setY(0); if (away.lengthSq() < 1e-4) away.set(i ? 1 : -1, 0, 0); away.normalize();
+      const f = 2.4 / MASS[p.type]; p.kb = new THREE.Vector3(away.x * f, 2.2 / MASS[p.type], away.z * f);
+      p.spin = (i ? -1 : 1) * (6 + 4 / MASS[p.type]);
+      for (let k = 0; k < 3; k++) addFx(starSprite(['#ffe14d', '#fff7c2', '#ffc107'][k]), { kind: 'star', life: 3.6, of: p, phase: k * Math.PI * 2 / 3 });
+    });
+  }
+  function updateFx(dt, t) {
+    parts.forEach(p => {   // knock-back: slide, hop and bounce
+      if (!p.kb) return;
+      const g = p.g.position; g.x += p.kb.x * dt; g.z += p.kb.z * dt; g.y += p.kb.y * dt; p.kb.y -= 14 * dt;
+      if (g.y < 0.04) { g.y = 0.04; p.kb.y = Math.abs(p.kb.y) > 1 ? -p.kb.y * 0.35 : 0; p.kb.x *= 0.55; p.kb.z *= 0.55; }
+      p.g.rotation.x = -p.kb.y * 0.06;
+      if (Math.hypot(p.kb.x, p.kb.z) < 0.05 && p.kb.y === 0) { p.kb = null; p.g.rotation.x = 0; }
+    });
+    crashFx = crashFx.filter(f => {
+      f.age += dt; const k = f.age / f.life, m = f.mesh;
+      if (k >= 1) { dropFx(f); return false; }
+      if (f.pos) { f.pos.addScaledVector(f.vel || new THREE.Vector3(), dt); m.position.copy(f.pos); }
+      if (f.kind === 'debris') {
+        f.vel.y -= 14 * dt; if (f.pos.y < f.size / 2) { f.pos.y = f.size / 2; f.vel.y *= -0.3; f.vel.x *= 0.6; f.vel.z *= 0.6; f.rot.multiplyScalar(0.6); }
+        m.rotation.x += f.rot.x * dt; m.rotation.y += f.rot.y * dt; m.rotation.z += f.rot.z * dt;
+        m.scale.setScalar(f.size); m.material.opacity = Math.min(1, (1 - k) * 4);
+      } else if (f.kind === 'spark') { f.vel.y -= 10 * dt; m.scale.setScalar(f.size * (1 - k)); }
+      else if (f.kind === 'smoke') { m.scale.setScalar(f.size * (1 + k * 4)); m.material.opacity = 0.75 * (1 - k); f.vel.multiplyScalar(Math.pow(0.4, dt)); }
+      else if (f.kind === 'ball') { m.scale.setScalar(0.3 + k * 1.6); m.material.opacity = 1 - k; m.material.color.setHex(k < 0.4 ? 0xfff2a0 : 0xff7a1a); }
+      else if (f.kind === 'ring') { m.scale.setScalar(0.3 + k * 3.2); m.material.opacity = 1 - k; }
+      else if (f.kind === 'light') crashLight.intensity = 6 * (1 - k) * (1 - k);
+      else if (f.kind === 'pop') { const b = f.base * (1 - Math.exp(-f.age * 7) * Math.cos(f.age * 18)); m.scale.set(b, b, 1); m.material.rotation = Math.sin(t * 6) * 0.15; }
+      else if (f.kind === 'star') {
+        const a = t * 5 + f.phase, p = f.of.g.position, h = f.of.extra.badgeY * (f.of.extra.scale || 1) - 0.1;
+        m.position.set(p.x + Math.cos(a) * 0.4, p.y + h + Math.sin(a * 2) * 0.05, p.z + Math.sin(a) * 0.4);
+        m.material.opacity = Math.min(1, (1 - k) * 3);
+      }
+      return true;
+    });
+  }
+  function startReplay() {
+    crashFx.forEach(dropFx); crashFx = [];
+    sitMode = 'replay'; sitTimer = 0.6; crash = null;
+    if (curSit.lichten) setLights(curSit.lichten);
+    parts.forEach(p => { Object.assign(p, { u: 0, moving: false, spin: 0, shake: 0, delay: 0, kb: null }); p.g.rotation.x = 0; p.g.visible = true; if (p.tube) p.tube.visible = true; placeOnPath(p, 0); setBadge(p, null); });
+    movers = curSit.volgorde.map(id => parts.find(p => p.id === id)).filter(Boolean);
+    movers.forEach((p, i) => setBadge(p, String(i + 1), '#16a058'));
+    drawKruisPanel({ good: true, title: 'Zo is het goed:', text: curSit.uitleg || '' });
+  }
+  function startMoving(p, mayUseLight) {
+    p.moving = true; if (p.tube) p.tube.visible = false;
+    if (mayUseLight && lights && p.van && lights[p.van] === 'rood') {   // its turn has come: its light goes green
+      const ax = (p.van === 'noord' || p.van === 'zuid') ? ['noord', 'zuid'] : ['oost', 'west'], m = {};
+      Object.keys(ARMS).forEach(a => m[a] = ax.includes(a) ? 'groen' : 'rood'); setLights(m);
+    }
+  }
+  function updateMovers(dt, t) {
+    if (phase !== 'kruis' || !curSit) return;
+    if (slowmo > 0) { slowmo -= dt; dt *= 0.3; }
+    updateFx(dt, t);
+    parts.forEach(p => {
+      if (p.shake > 0) { p.shake -= dt; p.g.rotation.z = Math.sin(t * 50) * 0.15 * p.shake; } else p.g.rotation.z = 0;
+      if (p.spin) { p.g.rotation.y += p.spin * dt; p.spin *= Math.pow(0.03, dt); if (Math.abs(p.spin) < 0.05) p.spin = 0; }
+      if (p.extra.blink && p.naar && p.naar !== 'rechtdoor') {
+        const on = Math.floor(t * 3) % 2 === 0, side = p.naar === 'linksaf' ? 'left' : 'right';
+        p.extra.blink[side].forEach(m => m.material.color.setHex(on ? 0xffa000 : 0x5a3a00));
+      }
+      if (p.extra.blue) p.extra.blue.forEach((m, i) => m.material.color.setHex(Math.floor(t * 6 + i) % 2 ? 0x2255ff : 0x0a1440));
+      p.g.scale.setScalar((p.extra.scale || 1) * (sitMode === 'pick' && p.hover ? 1.15 : 1));
+    });
+    if (sitTimer > 0) {
+      sitTimer -= dt; if (sitTimer > 0) return;
+      if (sitMode === 'done') return nextItem();
+      if (sitMode === 'crash') return startReplay();
+    }
+    if (sitMode !== 'play' && sitMode !== 'replay') return;
+    let prev = null, allDone = true;
+    const prevOk = () => !prev || prev.u >= 1 || prev.u > (prev.type === 'voetganger' ? 0.92 : 0.5);
+    movers.forEach(p => {
+      if (p.u >= 1) { prev = p; return; }
+      allDone = false;
+      if (!p.moving && prevOk()) startMoving(p, true);
+      if (p.moving) { p.u = Math.min(1, p.u + dt * p.speed / p.len); placeOnPath(p, p.u); if (p.u >= 1) p.g.visible = false; }
+      prev = p;
+    });
+    if (crash) {
+      allDone = false;
+      const { x, y } = crash;
+      if (!crash.started && prevOk()) { crash.started = true; startMoving(x, false); startMoving(y, true); }
+      if (crash.started) {
+        let arrived = true;
+        [[x, crash.ux], [y, crash.uy]].forEach(([p, uT]) => {
+          if (p.delay > 0) { p.delay -= dt; arrived = false; return; }
+          p.u = Math.min(uT, p.u + dt * p.speed / p.len); placeOnPath(p, p.u); if (p.u < uT) arrived = false;
+        });
+        if (arrived || x.g.position.distanceTo(y.g.position) < RAD[x.type] + RAD[y.type]) doCrash();
+      }
+    }
+    if (!allDone) return;
+    if (sitMode === 'play') {
+      const gain = scoreItem(!cur.again);
+      drawKruisPanel({ good: true, title: `Goed zo! 🎉  +${gain}` }); sfx('good'); buzz(0.5, 80);
+    } else scoreItem(false);
+    sitMode = 'done'; sitTimer = sitWrong ? 2.0 : 1.4;
+  }
+
+  // ---------- progress ----------
+  let prog = { stars: {}, tijd: {} };
+  try { prog = Object.assign(prog, JSON.parse(localStorage.getItem('verkeer-voortgang') || '{}')); } catch (e) {}
+  const saveProg = () => { try { localStorage.setItem('verkeer-voortgang', JSON.stringify(prog)); } catch (e) {} };
+  const starsOf = i => prog.stars[LVLS[i].id] || 0;
+  const isOpen = i => UNLOCK_ALL || i === 0 || starsOf(i - 1) >= 1;
+  function continueIndex() {
+    let last = 0;
+    for (let i = 0; i < LVLS.length; i++) { if (!isOpen(i)) break; last = i; if (!starsOf(i)) return i; }
+    return last;
+  }
+  const starStr = n => '★'.repeat(n) + '☆'.repeat(3 - n);
+  const fmtTime = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+  // ---------- game state ----------
+  let phase = 'map', lvl = 0, items = [], queue = [], cur = null, total = 0, done = 0, firstRight = 0, score = 0, streak = 0;
+  let options = [], waitBtn = null, locked = false, startedAt = 0, endedAt = 0, lastSec = -1;
+  const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const elapsed = () => !startedAt ? 0 : Math.floor(((endedAt || performance.now()) - startedAt) / 1000);
+
+  function hideAll() {
+    [S.mesh, Q.mesh, contBtn.mesh, goBtn.mesh, backBtn.mesh, wijzerBtn.mesh].forEach(m => m.visible = false);
+    ans.forEach(b => b.mesh.visible = false); lvlBtns.forEach(b => b.mesh.visible = false); resBtns.forEach(b => b.mesh.visible = false);
+    dioRoot.visible = false;
+  }
+  function placeQ(y, scale, z) { Q.mesh.position.set(0, y, z === undefined ? Z : z); Q.mesh.scale.setScalar(scale || 1); }
+  function placeS() { const s = Q.mesh.scale.x; S.mesh.scale.setScalar(Math.max(0.7, s)); S.mesh.position.set(0, Q.mesh.position.y + 0.45 * s + 0.11 * Math.max(0.7, s), Q.mesh.position.z); }
+
+  // map
+  function showMap() {
+    phase = 'map'; hideAll(); clearSit();
+    placeQ(2.38, 0.62); Q.mesh.visible = true;
+    const { ctx, c } = Q; panelBg(ctx, c, 44);
+    const totalStars = LVLS.reduce((a, _, i) => a + starsOf(i), 0);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = C.accent; fit(ctx, '🚦 Verkeersheld', 940, 130, 900); ctx.fillText('🚦 Verkeersheld', 512, 230);
+    ctx.fillStyle = '#ffffff'; ctx.font = `800 64px ${FONT}`;
+    ctx.fillText(LVLS.length ? `⭐ ${totalStars} van ${LVLS.length * 3} sterren` : 'traffic-content.js niet gevonden', 512, 360);
+    Q.update();
+    if (!LVLS.length) return;
+    const ci = continueIndex();
+    contBtn.mesh.visible = true; contBtn.draw(starsOf(ci) ? `Speel level ${ci + 1} opnieuw ▶` : `Verder met level ${ci + 1}: ${LVLS[ci].titel} ▶`, 'start');
+    contBtn.onSelect = () => { sfx('click'); openIntro(ci); };
+    lvlBtns.forEach((b, i) => {
+      b.mesh.visible = true;
+      const open = isOpen(i), st = starsOf(i);
+      b.draw(open ? `${i + 1}. ${LVLS[i].titel}  ${st ? starStr(st) : ''}` : `🔒 ${i + 1}. ${LVLS[i].titel}`, !open ? 'lock' : st === 3 ? 'good' : st ? 'done' : 'idle');
+    });
+    if (SIGN_LIST.length) { showWijzerBtn('📖 Bordenwijzer', 0, 1.66 - Math.ceil(LVLS.length / 2) * 0.2 + 0.02); }
+    applyCamera();
+  }
+  // intro
+  function openIntro(i) {
+    lvl = i; phase = 'intro'; hideAll();
+    placeQ(1.95, 1); Q.mesh.visible = true;
+    const L = LVLS[i], { ctx, c } = Q; panelBg(ctx, c, 44);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = C.muted; ctx.font = `800 40px ${FONT}`; ctx.fillText(`Level ${i + 1}`, 512, 70);
+    ctx.fillStyle = C.accent; fit(ctx, L.titel, 900, 84, 900); ctx.fillText(L.titel, 512, 150);
+    ctx.fillStyle = '#ffffff'; ctx.textBaseline = 'middle';
+    const fams = L.soort === 'families' ? Object.keys(FAMS) : L.soort === 'borden' ? (L.families || Object.keys(FAMS)).filter(k => FAMS[k]) : [];
+    if (fams.length) {   // sign levels: show the families as pictures instead of only text
+      const first = (L.uitleg || '').split('\n')[0];
+      fit(ctx, first, 920, 36, 700); ctx.fillText(first, 512, 210);
+      drawFamChart(ctx, fams, 60, 964, 240, 488, false, L.soort === 'families');
+    } else {
+      const f = fitLines(ctx, L.uitleg || '', 900, 7, 40, 700, 22); drawLines(ctx, f, 512, 320, f.size * 1.22);
+    }
+    const best = prog.tijd[L.id];
+    if (starsOf(i) && !fams.length) { ctx.fillStyle = C.muted; ctx.font = `700 32px ${FONT}`; ctx.fillText(`Jouw beste: ${starStr(starsOf(i))}${best ? '   ⏱ ' + fmtTime(best) : ''}`, 512, 470); }
+    Q.update();
+    goBtn.mesh.visible = true; goBtn.draw('Start ▶', 'start');
+    backBtn.mesh.visible = true; backBtn.draw('🗺 Kaart', 'idle'); backBtn.mesh.position.set(-0.75, 1.25, Z + 0.06); backBtn.onSelect = () => { sfx('click'); showMap(); };
+    applyCamera();
+  }
+  // ---- Bordenwijzer: the sign families with an example, name and short rule ----
+  // one row per family: name + what it means. Shape/colour only when withShape (the families intro): players have to learn those themselves
+  function drawFamChart(ctx, fams, x0, x1, y0, y1, big, withShape) {
+    const rowH = (y1 - y0) / fams.length, split = x0 + (x1 - x0) * 0.42, fs = Math.min(big ? 38 : 34, rowH * 0.5);
+    ctx.textBaseline = 'middle';
+    fams.forEach((k, i) => {
+      const F = FAMS[k], y = y0 + rowH * i, cy = y + rowH / 2;
+      ctx.fillStyle = 'rgba(255,255,255,0.07)'; rr(ctx, x0, y + 4, x1 - x0, rowH - 8, 18); ctx.fill();
+      ctx.textAlign = 'left';
+      ctx.fillStyle = C.accent; fit(ctx, F.naam, split - x0 - 40, fs, 900); ctx.fillText(F.naam, x0 + 24, cy + 2);
+      ctx.fillStyle = '#ffffff';
+      const txt = withShape && F.vorm ? `${F.vorm}: ${(F.betekenis || '').charAt(0).toLowerCase()}${(F.betekenis || '').slice(1)}` : (F.betekenis || '');
+      const f = fitLines(ctx, txt, x1 - split - 30, 2, fs * 0.9, 700, 16);
+      ctx.textAlign = 'left'; drawLines(ctx, f, split, cy + 2, f.size * 1.12);
+    });
+    ctx.textAlign = 'center';
+  }
+  function showWijzerBtn(label, x, y) {
+    wijzerBtn.mesh.visible = true; wijzerBtn.draw(label, 'done'); wijzerBtn.mesh.position.set(x, y, Z + 0.09);
+  }
+  let wijzerFrom = null;
+  function openWijzer() {
+    wijzerFrom = phase;
+    if (phase === 'quiz') { ans.forEach(b => b.wasVisible = b.mesh.visible); ans.forEach(b => b.mesh.visible = false); wijzerBtn.mesh.visible = false; }
+    else { phase = 'wijzer'; hideAll(); placeQ(2.0, 1); }
+    Q.mesh.visible = true;
+    const { ctx, c } = Q; panelBg(ctx, c, 44);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = C.accent; ctx.font = `900 64px ${FONT}`; ctx.fillText('📖 Bordenwijzer', 512, 66);
+    ctx.fillStyle = C.muted; ctx.font = `700 30px ${FONT}`; ctx.fillText('Wat betekenen de namen? De vorm en kleur moet je zelf onthouden!', 512, 122);
+    drawFamChart(ctx, Object.keys(FAMS), 50, 974, 150, 490, true);
+    Q.update();
+    backBtn.mesh.visible = true; backBtn.draw(wijzerFrom === 'quiz' ? '◀ Terug naar de vraag' : '◀ Terug', 'idle');
+    backBtn.mesh.position.set(0, Q.mesh.position.y - 0.6, Z + 0.09);
+    backBtn.onSelect = () => { sfx('click'); closeWijzer(); };
+    applyCamera();
+  }
+  function closeWijzer() {
+    backBtn.mesh.visible = false;
+    if (wijzerFrom !== 'quiz') return showMap();
+    ans.forEach(b => b.mesh.visible = !!b.wasVisible);
+    drawQuizPanel(lastQuizFb); if (cur.k === 'fam') showWijzerBtn('📖 Uitleg', 0.6, 2.47);
+  }
+  // build the questions of a level
+  function signItems(pool, n, kinds) {
+    const list = []; let bag = [];
+    for (let i = 0; i < n; i++) { if (!bag.length) bag = shuffle(pool.slice()); list.push({ k: kinds[Math.floor(Math.random() * kinds.length)], sign: bag.pop() }); }
+    return list;
+  }
+  function startLevel() {
+    const L = LVLS[lvl]; items = [];
+    if (L.soort === 'families') items = signItems(SIGN_LIST, L.vragen || 8, ['fam']);
+    else if (L.soort === 'borden') {
+      const pool = SIGN_LIST.filter(s => !L.families || L.families.includes(s.familie));
+      items = signItems(pool.length ? pool : SIGN_LIST, L.vragen || 8, ['b2m', 'm2b']);
+    } else if (L.soort === 'kruispunt') items = shuffle((L.situaties || []).filter(k => SITS[k]).map(k => ({ k: 'sit', key: k })));
+    else if (L.soort === 'eindtoets') {
+      const n = L.vragen || 12, sits = [];
+      LVLS.forEach(x => { if (x.soort === 'kruispunt') (x.situaties || []).forEach(k => SITS[k] && sits.push(k)); });
+      const nSit = Math.min(sits.length, Math.round(n / 2));
+      items = shuffle(signItems(SIGN_LIST, n - nSit, ['b2m', 'm2b', 'fam']).concat(shuffle(sits).slice(0, nSit).map(k => ({ k: 'sit', key: k }))));
+    }
+    if (!items.length) { showMap(); return; }
+    items.forEach((it, i) => it.id = i);
+    queue = items.slice(); total = items.length; done = 0; firstRight = 0; score = 0; streak = 0;
+    startedAt = performance.now(); endedAt = 0; lastSec = -1;
+    logGame('level-gestart', { l: L.id });
+    nextItem();
+  }
+  function scoreItem(first) {
+    const gain = first ? 10 + Math.min(streak, 5) * 2 : 5;
+    score += gain; done++; if (first) { firstRight++; streak++; } else streak = 0;
+    drawScore(); return gain;
+  }
+  function markWrong() {
+    streak = 0;
+    if (!cur.requeued) { cur.requeued = true; cur.wrong = true; queue.splice(Math.min(2, queue.length), 0, Object.assign({}, cur, { again: true })); }
+    drawScore();
+  }
+  function drawScore() {
+    const { ctx, c } = S; panelBg(ctx, c, 60);
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const txt = `Level ${lvl + 1}     ⭐ ${score}     ✅ ${Math.min(done, total)}/${total}     🔥 ${streak}     ⏱ ${fmtTime(elapsed())}`;
+    fit(ctx, txt, c.width - 60, 60, 800); ctx.fillText(txt, c.width / 2, c.height / 2 + 2); S.update();
+  }
+  function nextItem() {
+    if (!queue.length) return endLevel();
+    cur = queue.shift(); waitBtn = null; locked = false;
+    hideAll();
+    if (cur.k === 'sit') {
+      phase = 'kruis';
+      if (!setupSituation(cur.key)) return nextItem();
+      dioRoot.visible = true;
+      if (renderer.xr.isPresenting) placeQ(2.0, 0.7, -2.6); else placeQ(1.5, 0.55, -2.1);
+      Q.mesh.visible = true; placeS(); S.mesh.visible = true;
+      drawKruisPanel(null); drawScore(); applyCamera(); return;
+    }
+    phase = 'quiz'; placeQ(2.1, 1); Q.mesh.visible = true; placeS(); S.mesh.visible = true;
+    const s = cur.sign;
+    if (cur.k === 'fam') {
+      const fams = Object.keys(FAMS);
+      options = shuffle([s.familie, ...shuffle(fams.filter(f => f !== s.familie)).slice(0, 3)]);
+      ans.forEach((b, i) => { b.mesh.visible = i < options.length; if (i < options.length) { b.enabled = true; b.draw(FAMS[options[i]].naam, 'idle'); } });
+    } else {
+      let pool = shuffle(SIGN_LIST.filter(x => x !== s && x.familie === s.familie));
+      if (pool.length < 3) pool = pool.concat(shuffle(SIGN_LIST.filter(x => x !== s && x.familie !== s.familie)));
+      options = shuffle([s, ...pool.slice(0, 3)]);
+      ans.forEach((b, i) => { b.mesh.visible = true; b.enabled = true; drawOption(b, options[i], 'idle'); });
+    }
+    drawQuizPanel(null); drawScore(); applyCamera();
+    if (cur.k === 'fam') showWijzerBtn('📖 Uitleg', 0.6, 2.47);
+  }
+  function drawOption(b, opt, state) {
+    if (cur.k === 'fam') b.draw(FAMS[opt].naam, state);
+    else if (cur.k === 'b2m') b.draw(opt.betekenis, state);
+    else b.draw('', state, opt.id);
+  }
+  let lastQuizFb = null;
+  function drawQuizPanel(fb) {
+    lastQuizFb = fb;
+    const { ctx, c } = Q, s = cur.sign; panelBg(ctx, c, 44);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    if (cur.k === 'm2b') {
+      ctx.fillStyle = C.muted; ctx.font = `800 40px ${FONT}`; ctx.fillText('Welk bord betekent:', 512, 62);
+      ctx.fillStyle = C.accent; const f = fitLines(ctx, s.betekenis, 900, 3, 58, 800, 26); drawLines(ctx, f, 512, 175, f.size * 1.15);
+    } else {
+      drawSign(ctx, s.id, 175, 170, 120);
+      ctx.textAlign = 'left'; ctx.fillStyle = C.muted; ctx.font = `800 42px ${FONT}`;
+      ctx.fillText(cur.k === 'fam' ? 'Bij welke familie' : 'Wat betekent', 340, 130);
+      ctx.fillText(cur.k === 'fam' ? 'hoort dit bord?' : 'dit bord?', 340, 190);
+    }
+    ctx.strokeStyle = C.line; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(60, 312); ctx.lineTo(964, 312); ctx.stroke();
+    ctx.textAlign = 'center';
+    if (!fb) { ctx.fillStyle = C.text; ctx.font = `700 42px ${FONT}`; ctx.fillText('Kies het goede antwoord 👇', 512, 400); }
+    else {
+      ctx.fillStyle = fb.good ? '#5cf0a0' : '#ff9a9d'; fit(ctx, fb.title, 920, 48, 900); ctx.fillText(fb.title, 512, 360);
+      ctx.fillStyle = C.tip;
+      const txt = cur.k === 'fam' ? FAMS[s.familie].uitleg : s.betekenis;
+      const f = fitLines(ctx, txt, 900, 2, 38, 700, 22); drawLines(ctx, f, 512, 440, f.size * 1.15);
+    }
+    Q.update();
+  }
+  function drawKruisPanel(fb) {
+    const { ctx, c } = Q; panelBg(ctx, c, 44);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = C.accent; ctx.font = `900 80px ${FONT}`; ctx.fillText('Wie mag eerst?', 512, 90);
+    ctx.fillStyle = C.text; ctx.font = `700 40px ${FONT}`;
+    ctx.fillText(sitMode === 'pick' ? `Tik ze aan in de volgorde waarin ze mogen gaan (${chosen.length}/${curSit.volgorde.length})` : 'Kijk wat er gebeurt…', 512, 175);
+    ctx.strokeStyle = C.line; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(60, 235); ctx.lineTo(964, 235); ctx.stroke();
+    if (!fb) {
+      ctx.fillStyle = C.muted; ctx.font = `700 36px ${FONT}`; ctx.fillText('De gekleurde lijn laat zien waar iedereen heen wil.', 512, 310);
+      if (sitMode === 'pick' && chosen.length) ctx.fillText('Vergist? Tik nog eens op een nummer om het weg te halen.', 512, 370);
+    }
+    else {
+      ctx.fillStyle = fb.good ? '#5cf0a0' : '#ff9a9d'; fit(ctx, fb.title, 920, 54, 900); ctx.fillText(fb.title, 512, 295);
+      if (fb.text) { ctx.fillStyle = C.tip; const f = fitLines(ctx, fb.text, 900, 4, 38, 700, 22); drawLines(ctx, f, 512, 410, f.size * 1.18); }
+    }
+    Q.update();
+  }
+  function answer(btn) {
+    if (phase !== 'quiz') return;
+    if (waitBtn) { if (btn === waitBtn) { sfx('click'); nextItem(); } return; }
+    if (locked) return;
+    locked = true;
+    const correct = cur.k === 'fam' ? cur.sign.familie : cur.sign, ci = options.indexOf(correct), cb = ans[ci];
+    if (options[btn.index] === correct) {
+      const gain = scoreItem(!cur.wrong && !cur.again);
+      ans.forEach((b, i) => drawOption(b, options[i], b === btn ? 'good' : 'dim'));
+      drawQuizPanel({ good: true, title: `Goed zo! 🎉  +${gain}` }); sfx('good'); buzz(0.5, 80);
+      setTimeout(nextItem, 1700);
+    } else {
+      markWrong();
+      ans.forEach((b, i) => drawOption(b, options[i], b === btn ? 'bad' : b === cb ? 'good' : 'dim'));
+      drawQuizPanel({ good: false, title: 'Oeps! Kies de groene knop.' }); sfx('bad'); buzz(0.9, 160);
+      waitBtn = cb; locked = false;
+    }
+  }
+  function endLevel() {
+    endedAt = performance.now();
+    const secs = elapsed(), L = LVLS[lvl], ratio = firstRight / Math.max(1, total), wrong = total - firstRight;
+    const passed = ratio >= 0.75, stars = !passed ? 0 : wrong === 0 ? 3 : wrong === 1 ? 2 : 1;
+    const before = starsOf(lvl), newStars = stars > before;
+    if (newStars) prog.stars[L.id] = stars;
+    let newTime = false;
+    if (passed && (!prog.tijd[L.id] || secs < prog.tijd[L.id])) { prog.tijd[L.id] = secs; newTime = true; }
+    saveProg();
+    logGame(passed ? 'level-gehaald' : 'level-niet-gehaald', { l: L.id, goed: firstRight, n: total, t: secs, sterren: stars });
+    phase = 'result'; hideAll(); clearSit();
+    placeQ(2.0, 1); Q.mesh.visible = true;
+    const { ctx, c } = Q; panelBg(ctx, c, 44);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = passed ? C.accent : '#ff9a9d'; ctx.font = `900 84px ${FONT}`;
+    ctx.fillText(passed ? 'Level gehaald! 🎉' : 'Bijna!', 512, 90);
+    ctx.font = `900 110px ${FONT}`; ctx.fillStyle = C.accent; ctx.fillText(starStr(stars), 512, 205);
+    ctx.fillStyle = '#ffffff'; ctx.font = `800 46px ${FONT}`; ctx.fillText(`${firstRight} van ${total} in één keer goed`, 512, 310);
+    ctx.fillStyle = C.muted; ctx.font = `700 38px ${FONT}`;
+    ctx.fillText(`⏱ ${fmtTime(secs)}${newTime ? '  (snelste tijd!)' : ''}     ⭐ ${score} punten`, 512, 370);
+    ctx.fillStyle = C.text; ctx.font = `700 36px ${FONT}`;
+    const hasNext = lvl + 1 < LVLS.length;
+    ctx.fillText(passed ? (hasNext ? (before ? 'Goed gedaan!' : 'Het volgende level is open! 🔓') : 'Je hebt alle levels gehaald! 🏆') : 'Haal 3 van de 4 goed om het volgende level te openen.', 512, 440);
+    Q.update();
+    resBtns.forEach(b => b.mesh.visible = true);
+    resBtns[0].draw('🗺 Kaart', 'idle'); resBtns[0].onSelect = () => { sfx('click'); showMap(); };
+    resBtns[1].draw('↻ Opnieuw', 'idle'); resBtns[1].onSelect = () => { sfx('click'); startLevel(); };
+    if (passed && hasNext) { resBtns[2].draw('Volgende ▶', 'start'); resBtns[2].onSelect = () => { sfx('click'); openIntro(lvl + 1); }; }
+    else resBtns[2].mesh.visible = false;
+    sfx(passed ? 'win' : 'fail');
+    applyCamera();
+  }
+
+  // ---------- input ----------
+  const raycaster = new THREE.Raycaster();
+  const tmpM = new THREE.Matrix4(), tmpV = new THREE.Vector3(), tmpD = new THREE.Vector3();
+  function targets() {
+    const list = interactive.filter(m => m.visible);
+    if (phase === 'kruis' && sitMode === 'pick') parts.forEach(p => list.push(p.hit));
+    return list;
+  }
+  function hitFromRay() { const h = raycaster.intersectObjects(targets(), false); return h.length ? h[0] : null; }
+  function selectHit(hit) {
+    if (!hit) return;
+    if (hit.object.userData.part) { tapPart(hit.object.userData.part); return; }
+    const b = hit.object.userData.btn; if (b && b.enabled && b.onSelect) b.onSelect();
+  }
+  const controllers = []; let lastSource = null;
+  for (let i = 0; i < 2; i++) {
+    const c = renderer.xr.getController(i);
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 }));
+    line.scale.z = 4; c.add(line);
+    const dot = new THREE.Mesh(new THREE.SphereGeometry(0.01, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffcf40 })); dot.visible = false; scene.add(dot);
+    c.userData = { line, dot, src: null };
+    c.addEventListener('connected', e => { c.userData.src = e.data; });
+    c.addEventListener('disconnected', () => { c.userData.src = null; dot.visible = false; });
+    c.addEventListener('select', () => { ensureAudio(); lastSource = c.userData.src; rayFrom(c); selectHit(hitFromRay()); });
+    scene.add(c); controllers.push(c);
+    const grip = renderer.xr.getControllerGrip(i);
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.03, 0.12), new THREE.MeshLambertMaterial({ color: 0xdfe8ff })); body.position.z = 0.02; grip.add(body); scene.add(grip);
+  }
+  function rayFrom(c) { tmpM.identity().extractRotation(c.matrixWorld); raycaster.ray.origin.setFromMatrixPosition(c.matrixWorld); raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tmpM); }
+  function buzz(v, ms) { try { const h = lastSource && lastSource.gamepad && lastSource.gamepad.hapticActuators; if (h && h[0]) h[0].pulse(v, ms); } catch (e) {} }
+  const mouse = new THREE.Vector2(); let mouseIn = false;
+  function setMouse(e) { const r = renderer.domElement.getBoundingClientRect(); mouse.x = ((e.clientX - r.left) / r.width) * 2 - 1; mouse.y = -((e.clientY - r.top) / r.height) * 2 + 1; mouseIn = true; }
+  renderer.domElement.addEventListener('pointermove', setMouse);
+  renderer.domElement.addEventListener('pointerleave', () => { mouseIn = false; });
+  // non-VR: a tap selects; dragging turns the crossing table (sideways) and tilts the view (up/down)
+  let drag = null, camPitch = Math.atan2(1.0, 1.45);
+  const PITCH_MIN = 0.3, PITCH_MAX = 1.05;
+  function turnView(dx, dy) {
+    dioRoot.rotation.y += dx;
+    camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, camPitch + dy)); applyCamera();
+  }
+  renderer.domElement.addEventListener('pointerdown', e => {
+    if (renderer.xr.isPresenting) return;
+    ensureAudio(); setMouse(e); drag = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
+  });
+  renderer.domElement.addEventListener('pointermove', e => {
+    if (!drag || e.pointerId !== drag.id || phase !== 'kruis') return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (!drag.moved && Math.hypot(dx, dy) < 8) return;
+    if (!drag.moved) { drag.moved = true; renderer.domElement.setPointerCapture(e.pointerId); }
+    drag.x = e.clientX; drag.y = e.clientY; turnView(dx * 0.008, dy * 0.005);
+  });
+  const endDrag = e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const tap = !drag.moved; drag = null;
+    if (tap && e.type === 'pointerup' && !renderer.xr.isPresenting) { setMouse(e); raycaster.setFromCamera(mouse, camera); selectHit(hitFromRay()); }
+  };
+  renderer.domElement.addEventListener('pointerup', endDrag);
+  renderer.domElement.addEventListener('pointercancel', endDrag);
+  window.addEventListener('keydown', e => {
+    if (phase !== 'kruis' || renderer.xr.isPresenting) return;
+    const k = { ArrowLeft: [-0.12, 0], ArrowRight: [0.12, 0], ArrowUp: [0, -0.08], ArrowDown: [0, 0.08] }[e.key];
+    if (k) { e.preventDefault(); turnView(k[0], k[1]); }
+  });
+
+  // ---------- VR ----------
+  let session = null, needsPlace = false;
+  async function setupVR() {
+    const isHeadset = /OculusBrowser|Quest|Pico|Wolvic/i.test(navigator.userAgent);
+    let ok = false;
+    if (isHeadset) { try { ok = !!(navigator.xr && await navigator.xr.isSessionSupported('immersive-vr')); } catch (e) {} }
+    if (ok) { vrBtn.hidden = false; note.textContent = 'Druk op "Speel in VR". Richt je straal en druk op de trekker.'; }
+    else { vrBtn.hidden = true; note.textContent = 'Klik of tik om te spelen. Sleep om het kruispunt te draaien.'; }
+  }
+  vrBtn.addEventListener('click', async () => {
+    ensureAudio();
+    if (session) { session.end(); return; }
+    try {
+      const s = await navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor', 'bounded-floor'] });
+      s.addEventListener('end', () => { session = null; vrBtn.textContent = '🥽 Speel in VR'; ui.position.set(0, 0, 0); ui.rotation.set(0, 0, 0); if (phase === 'kruis') placeQ(1.5, 0.55, -2.1), placeS(); applyCamera(); });
+      await renderer.xr.setSession(s);
+      session = s; needsPlace = true; vrBtn.textContent = 'Stop VR';
+      if (phase === 'kruis') { placeQ(2.0, 0.7, -2.6); placeS(); }
+    } catch (e) { note.textContent = 'VR start niet. Open deze pagina direct in de Meta Quest-browser.'; }
+  });
+
+  // ---------- camera ----------
+  function applyCamera() {
+    if (renderer.xr.isPresenting) return;
+    const w = app.clientWidth, h = app.clientHeight;
+    renderer.setSize(w, h, false); camera.aspect = w / h;
+    const tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    if (phase === 'kruis') {
+      const target = new THREE.Vector3(0, 1.05, -1.5), dir = new THREE.Vector3(0, Math.sin(camPitch), Math.cos(camPitch));
+      const dist = Math.max(1.75, 0.85 / (tanHalf * camera.aspect));
+      camera.position.copy(target).addScaledVector(dir, dist); camera.lookAt(target);
+    } else {
+      const dist = Math.max((2.2 / 2) / tanHalf, (2.0 / 2) / (tanHalf * camera.aspect));
+      camera.position.set(0, 1.65, Z + dist); camera.lookAt(0, 1.67, Z);
+    }
+    camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', applyCamera);
+
+  // ---------- loop ----------
+  const clock = new THREE.Clock();
+  renderer.setAnimationLoop(() => {
+    const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
+    if (renderer.xr.isPresenting && needsPlace) {
+      const xc = renderer.xr.getCamera(camera); xc.getWorldPosition(tmpV);
+      if (tmpV.y > 0.3) {
+        xc.getWorldDirection(tmpD); ui.rotation.y = Math.atan2(-tmpD.x, -tmpD.z);
+        ui.position.set(tmpV.x, Math.max(-0.7, Math.min(0.2, tmpV.y - 1.6)), tmpV.z); needsPlace = false;
+      }
+    }
+    const hovered = new Set();
+    if (renderer.xr.isPresenting) {
+      controllers.forEach(c => {
+        const { line, dot, src } = c.userData;
+        if (!src) { line.visible = false; return; }
+        line.visible = true; rayFrom(c);
+        const hit = hitFromRay();
+        if (hit) { hovered.add(hit.object); line.scale.z = hit.distance; dot.position.copy(hit.point); dot.visible = true; }
+        else { line.scale.z = 4; dot.visible = false; }
+      });
+    } else if (mouseIn) {
+      raycaster.setFromCamera(mouse, camera);
+      const hit = hitFromRay(); if (hit) hovered.add(hit.object);
+      renderer.domElement.style.cursor = hit ? 'pointer' : 'default';
+    }
+    parts.forEach(p => { p.hover = hovered.has(p.hit); });
+    interactive.forEach(m => {
+      const b = m.userData.btn;
+      let target = hovered.has(m) && !['dim', 'lock'].includes(b.state) && !locked ? 1.05 : 1;
+      if (b === waitBtn) target = 1.04 + Math.sin(t * 7) * 0.03;
+      const s = m.scale.x + (target - m.scale.x) * Math.min(1, dt * 14); m.scale.set(s, s, 1);
+    });
+    updateMovers(dt, t);
+    if (updateScenery) updateScenery(dt, t);
+    if (camShake > 0 && !renderer.xr.isPresenting) {
+      camShake -= dt; applyCamera();
+      if (camShake > 0) { const a = 0.06 * camShake; camera.position.x += (Math.random() - 0.5) * a; camera.position.y += (Math.random() - 0.5) * a; }
+    }
+    if ((phase === 'quiz' || phase === 'kruis') && elapsed() !== lastSec) { lastSec = elapsed(); drawScore(); }
+    renderer.render(scene, camera);
+  });
+
+  showMap();
+  setupVR();
+}
+</script>
+</body>
+</html>
