@@ -1,43 +1,44 @@
 /* =====================================================================
-   WOORDENLIJSTEN voor wordgame.html
+   WORD LISTS for wordgame.html
 
-   - Elke lijst heeft een korte naam (zonder spaties), een titel en de woorden.
-   - Eén regel per woord: het woord, de betekenis en (mag leeg) een tip,
-     bijvoorbeeld een voorbeeldzin of ezelsbruggetje.
-   - Tekst tussen enkele aanhalingstekens '…' en elke regel eindigt met een komma.
-   - Een apostrof in de tekst schrijf je als \'  (bijv. 'zo\'n').
-   - Een lijst openen via een link: wordgame.html?lijst=blok2
-   - In het spel kun je met ◀ ▶ wisselen tussen de lijsten.
+   - Every list has a short key (no spaces), a title and its words.
+   - One line per word: the word, its meaning and (may be empty) a tip,
+     for example an example sentence or a memory aid.
+   - Text between single quotes '…' and every line ends with a comma.
+   - Write an apostrophe in the text as \'  (e.g. 'zo\'n').
+   - Open a list with a link: wordgame.html?list=blok2
+   - In the game, ◀ ▶ switch between the lists.
+   - The list key is also logged to the Google Sheet (field l).
    ===================================================================== */
 
-/* Welke lijst opent standaard? (een link met ?lijst=… gaat voor) */
-const STANDAARD_LIJST = 'les2';
+/* Which list opens by default? (a link with ?list=… wins) */
+const DEFAULT_LIST = 'les2';
 
-const WOORDENLIJSTEN = {
+const WORD_LISTS = {
 
   les2: {
-      titel: 'Woordenlijst les 2',
-      woorden: [
-        { woord: 'balanceren',           betekenis: 'In evenwicht proberen te blijven.', tip: '' },
-        { woord: 'beoefenen',            betekenis: 'Iets doen of uitvoeren. Als je een sport beoefent, doe je aan die sport.', tip: '' },
-        { woord: 'de conditie',          betekenis: 'Je lichamelijke toestand, hoe fit en gezond je bent.', tip: '' },
-        { woord: 'de duursport',         betekenis: 'Een sport die je lang achter elkaar doet, zoals lang rennen.', tip: '' },
-        { woord: 'fanatiek',             betekenis: 'Heel enthousiast en fel, graag willen winnen.', tip: '' },
-        { woord: 'geblesseerd',          betekenis: 'Gewond.', tip: '' },
-        { woord: 'de individuele sport', betekenis: 'Een sport die je in je eentje beoefent.', tip: '' },
-        { woord: 'de pass',              betekenis: 'Een trap of worp, waarmee je de bal naar een teamspeler overspeelt.', tip: '' },
-        { woord: 'de prof',              betekenis: 'Een professionele sporter. Je sport voor je beroep.', tip: '' },
-        { woord: 'de puck',              betekenis: 'De platte schijf bij ijshockey.', tip: '' },
-        { woord: 'schakelen',            betekenis: 'Van het ene naar het andere overgaan.', tip: '' },
-        { woord: 'sensationeel',         betekenis: 'Iets wat sensationeel is, veroorzaakt grote opwinding.', tip: '' },
-        { woord: 'serveren',             betekenis: 'Als eerste de bal in het spel brengen bij een sport met een net.', tip: '' },
-        { woord: 'sportief',             betekenis: 'Dat ben je als je veel aan sport doet of als je goed tegen je verlies kunt.', tip: '' },
-        { woord: 'het startblok',        betekenis: 'Een blok waar je tegenaan staat bij de start van een wedstrijd.', tip: '' },
-        { woord: 'de stick',             betekenis: 'Een soort staaf waarmee je tegen een bal slaat.', tip: '' },
-        { woord: 'tackelen',             betekenis: 'Iemand met opzet laten struikelen.', tip: '' },
-        { woord: 'de tactiek',           betekenis: 'De manier waarop je iets aanpakt om iets te bereiken.', tip: '' },
-        { woord: 'de techniek',          betekenis: 'De manier waarop je iets doet.', tip: '' },
-        { woord: 'de timing',            betekenis: 'Iets op het goede moment doen.', tip: '' },
+      title: 'Woordenlijst les 2',
+      words: [
+        { word: 'balanceren',           meaning: 'In evenwicht proberen te blijven.', tip: '' },
+        { word: 'beoefenen',            meaning: 'Iets doen of uitvoeren. Als je een sport beoefent, doe je aan die sport.', tip: '' },
+        { word: 'de conditie',          meaning: 'Je lichamelijke toestand, hoe fit en gezond je bent.', tip: '' },
+        { word: 'de duursport',         meaning: 'Een sport die je lang achter elkaar doet, zoals lang rennen.', tip: '' },
+        { word: 'fanatiek',             meaning: 'Heel enthousiast en fel, graag willen winnen.', tip: '' },
+        { word: 'geblesseerd',          meaning: 'Gewond.', tip: '' },
+        { word: 'de individuele sport', meaning: 'Een sport die je in je eentje beoefent.', tip: '' },
+        { word: 'de pass',              meaning: 'Een trap of worp, waarmee je de bal naar een teamspeler overspeelt.', tip: '' },
+        { word: 'de prof',              meaning: 'Een professionele sporter. Je sport voor je beroep.', tip: '' },
+        { word: 'de puck',              meaning: 'De platte schijf bij ijshockey.', tip: '' },
+        { word: 'schakelen',            meaning: 'Van het ene naar het andere overgaan.', tip: '' },
+        { word: 'sensationeel',         meaning: 'Iets wat sensationeel is, veroorzaakt grote opwinding.', tip: '' },
+        { word: 'serveren',             meaning: 'Als eerste de bal in het spel brengen bij een sport met een net.', tip: '' },
+        { word: 'sportief',             meaning: 'Dat ben je als je veel aan sport doet of als je goed tegen je verlies kunt.', tip: '' },
+        { word: 'het startblok',        meaning: 'Een blok waar je tegenaan staat bij de start van een wedstrijd.', tip: '' },
+        { word: 'de stick',             meaning: 'Een soort staaf waarmee je tegen een bal slaat.', tip: '' },
+        { word: 'tackelen',             meaning: 'Iemand met opzet laten struikelen.', tip: '' },
+        { word: 'de tactiek',           meaning: 'De manier waarop je iets aanpakt om iets te bereiken.', tip: '' },
+        { word: 'de techniek',          meaning: 'De manier waarop je iets doet.', tip: '' },
+        { word: 'de timing',            meaning: 'Iets op het goede moment doen.', tip: '' },
       ]
     },
 };

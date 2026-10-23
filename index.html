@@ -149,11 +149,11 @@
 </main>
 
 <script>
-  const W = THEMA.words, page = THEMA.page;
+  const W = THEME.words, page = THEME.page;
   document.querySelector('h1').textContent = W.heading;
   document.getElementById('wordDesc').textContent = `Weet jij wat de woorden betekenen? Kies rustig of gooi ${W.balls} naar de ${W.monsters.toLowerCase()}!`;
   document.getElementById('monsterTag').textContent = `${W.monsterIcon} Monsters`;
-  document.querySelector('link[rel="icon"]').href = `data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>${THEMA.icoon}</text></svg>`;
+  document.querySelector('link[rel="icon"]').href = `data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>${THEME.icon}</text></svg>`;
 
   const css = document.createElement('style'); css.textContent = page.css; document.head.appendChild(css);
   document.querySelector('.sky').innerHTML = page.sky;
@@ -174,12 +174,12 @@
   }
 
   // theme picker: the choice is remembered for the games too
-  const picker = document.querySelector('.themes'), chosen = gekozenThema();
-  [['auto', '📅 Automatisch']].concat(Object.keys(THEMAS).map(k => [k, `${THEMAS[k].icoon} ${THEMAS[k].naam}`])).forEach(([key, text]) => {
+  const picker = document.querySelector('.themes'), chosen = chosenTheme();
+  [['auto', '📅 Automatisch']].concat(Object.keys(THEMES).map(k => [k, `${THEMES[k].icon} ${THEMES[k].name}`])).forEach(([key, text]) => {
     const b = document.createElement('button');
     b.type = 'button'; b.textContent = text;
-    b.setAttribute('aria-pressed', String(key === (THEMAS[chosen] ? chosen : 'auto')));
-    b.addEventListener('click', () => { kiesThema(key); location.replace(location.pathname); });
+    b.setAttribute('aria-pressed', String(key === (THEMES[chosen] ? chosen : 'auto')));
+    b.addEventListener('click', () => { chooseTheme(key); location.replace(location.pathname); });
     picker.appendChild(b);
   });
 </script>

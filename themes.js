@@ -1,18 +1,18 @@
 /* =====================================================================
-   THEMA'S voor de startpagina en alle spellen.
+   THEMES for the home page and all games.
 
-   - Het standaardthema (STANDAARD_THEMA) staat in settings.js.
-     'auto' kiest op datum: elk thema met een `periode` is in die periode
-     actief, anders het eerste thema in de lijst.
-   - Op de startpagina kan iedereen zelf een thema kiezen; dat wordt
-     onthouden. Een link met ?thema=halloween gaat altijd voor.
-   - Een nieuw thema toevoegen: kopieer een blok in THEMAS en pas het aan.
+   - The default theme (DEFAULT_THEME) is in settings.js.
+     'auto' picks by date: a theme with a `period` is active during that
+     period, otherwise the first theme in the list.
+   - On the home page anyone can pick a theme; it's remembered (localStorage
+     key 'theme'). A link with ?theme=halloween always wins.
+   - Adding a theme: copy a block in THEMES and adjust it.
    ===================================================================== */
-const THEMAS = {
+const THEMES = {
 
   winter: {
-    naam: 'Winter', icoon: '❄️',
-    periode: null,
+    name: 'Winter', icon: '❄️',
+    period: null,
     // texts the games and home screen show
     words: {
       heading: 'Kies een spel ❄️',
@@ -128,8 +128,8 @@ const THEMAS = {
   },
 
   halloween: {
-    naam: 'Halloween', icoon: '🎃',
-    periode: { van: [10, 1], tot: [11, 2] },   // [maand, dag]
+    name: 'Halloween', icon: '🎃',
+    period: { from: [10, 1], to: [11, 2] },   // [month, day]
     words: {
       heading: 'Kies een spel 🎃',
       monsters: 'Pompoenmonsters', monster: 'pompoenmonster', monsterIcon: '🎃',
@@ -501,32 +501,32 @@ function themeCache(theme, build) { return theme._cache || (theme._cache = build
 
 /* ---------- which theme is active ---------- */
 
-function themaOpDatum(d) {
+function themeByDate(d) {
   const md = (d.getMonth() + 1) * 100 + d.getDate();
-  const hit = Object.keys(THEMAS).find(k => {
-    const p = THEMAS[k].periode; if (!p) return false;
-    const from = p.van[0] * 100 + p.van[1], to = p.tot[0] * 100 + p.tot[1];
+  const hit = Object.keys(THEMES).find(k => {
+    const p = THEMES[k].period; if (!p) return false;
+    const from = p.from[0] * 100 + p.from[1], to = p.to[0] * 100 + p.to[1];
     return from <= to ? md >= from && md <= to : md >= from || md <= to;   // a period may run over new year
   });
-  return hit || Object.keys(THEMAS)[0];
+  return hit || Object.keys(THEMES)[0];
 }
-// the theme picked on the home screen ('auto' or empty = follow STANDAARD_THEMA)
-function gekozenThema() { try { return localStorage.getItem('thema') || 'auto'; } catch (e) { return 'auto'; } }
-function kiesThema(naam) { try { if (naam && naam !== 'auto') localStorage.setItem('thema', naam); else localStorage.removeItem('thema'); } catch (e) {} }
+// the theme picked on the home screen ('auto' or empty = follow DEFAULT_THEME)
+function chosenTheme() { try { return localStorage.getItem('theme') || 'auto'; } catch (e) { return 'auto'; } }
+function chooseTheme(name) { try { if (name && name !== 'auto') localStorage.setItem('theme', name); else localStorage.removeItem('theme'); } catch (e) {} }
 
-const THEMA_NAAM = (function () {
-  const want = new URLSearchParams(location.search).get('thema');
-  if (want && THEMAS[want]) { kiesThema(want); return want; }
-  const stored = gekozenThema();
-  if (THEMAS[stored]) return stored;
-  const std = typeof STANDAARD_THEMA === 'string' ? STANDAARD_THEMA : 'auto';   // settings.js may be missing
-  return THEMAS[std] ? std : themaOpDatum(new Date());
+const THEME_NAME = (function () {
+  const want = new URLSearchParams(location.search).get('theme');
+  if (want && THEMES[want]) { chooseTheme(want); return want; }
+  const stored = chosenTheme();
+  if (THEMES[stored]) return stored;
+  const std = typeof DEFAULT_THEME === 'string' ? DEFAULT_THEME : 'auto';   // settings.js may be missing
+  return THEMES[std] ? std : themeByDate(new Date());
 })();
-const THEMA = THEMAS[THEMA_NAAM];
+const THEME = THEMES[THEME_NAME];
 
 // page colors follow the theme
 (function () {
   const root = document.documentElement;
-  Object.keys(THEMA.vars).forEach(k => root.style.setProperty(k, THEMA.vars[k]));
-  root.dataset.thema = THEMA_NAAM;
+  Object.keys(THEME.vars).forEach(k => root.style.setProperty(k, THEME.vars[k]));
+  root.dataset.gameTheme = THEME_NAME;   // not data-theme: that one is light/dark
 })();

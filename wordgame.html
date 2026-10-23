@@ -49,28 +49,29 @@
 <script src="wordlists.js"></script>
 <script>
 /* =====================================================================
-   DE WOORDENLIJSTEN staan in het bestand wordlists.js, naast dit bestand.
-   Daar kun je lijsten toevoegen, aanpassen en kiezen welke standaard opent.
-   Hieronder staan alleen de spelinstellingen.
+   THE WORD LISTS are in wordlists.js, next to this file.
+   There you can add and edit lists and choose which one opens by default.
+   Below are only the game settings.
    ===================================================================== */
 
-/* Hoeveel vragen per spel? 0 = elk woord één keer. Fout beantwoorde vragen komen
-   daarna nog een keer terug; die tellen niet extra mee. */
-const AANTAL_VRAGEN = 0;
+/* How many questions per game? 0 = every word once. Questions answered wrongly
+   come back once more afterwards; those don't count extra. */
+const QUESTION_COUNT = 0;
 
-/* Welke soorten vragen? Haal een regel weg om die soort uit te zetten. */
-const VRAAGSOORTEN = [
-  'woord-naar-betekenis',   // "Wat betekent nauwkeurig?"  → kies de betekenis
-  'betekenis-naar-woord'    // "Welk woord betekent: heel precies?" → kies het woord
+/* Which kinds of questions? Remove a line to switch that kind off. */
+const QUESTION_TYPES = [
+  'word-to-meaning',   // "Wat betekent nauwkeurig?"  → pick the meaning
+  'meaning-to-word'    // "Welk woord betekent: heel precies?" → pick the word
 ];
 
-/* Monsters-modus: sneeuwmonsters met de antwoorden lopen op je af; raak het goede!
-   MONSTER_SNELHEID: 1 = normaal, 0.7 = rustiger, 1.4 = sneller.
-   LEVENS: hoe vaak een monster je mag bereiken voordat het spel voorbij is. */
-const MONSTER_SNELHEID = 1;
-const LEVENS = 3;
+/* Monster mode: monsters carrying the answers walk towards you; hit the right one!
+   MONSTER_SPEED: 1 = normal, 0.7 = calmer, 1.4 = faster.
+   LIVES: how often a monster may reach you before the game is over. */
+const MONSTER_SPEED = 1;
+const LIVES = 3;
 
-/* Bezoeken en scores bijhouden in je Google Sheet: de link staat in settings.js. */
+/* Visits and scores go to your Google Sheet: the link is in settings.js.
+   Event names and fields (g: 'woorden', 'bezoek', goed, …) are the sheet's data: keep them. */
 const logGame = (e, extra) => logEvent(e, Object.assign({ g: 'woorden' }, extra));
 logGame('bezoek');
 </script>
@@ -84,27 +85,27 @@ logGame('bezoek');
 
 function start() {
   const FONT = '"Nunito", "Trebuchet MS", system-ui, sans-serif';
-  const C = THEMA.ui, W = THEMA.words;
-  const LISTS = (typeof WOORDENLIJSTEN === 'object' && WOORDENLIJSTEN) ? WOORDENLIJSTEN : {};
-  const LIST_KEYS = Object.keys(LISTS).filter(k => LISTS[k] && Array.isArray(LISTS[k].woorden));
+  const C = THEME.ui, W = THEME.words;
+  const LISTS = (typeof WORD_LISTS === 'object' && WORD_LISTS) ? WORD_LISTS : {};
+  const LIST_KEYS = Object.keys(LISTS).filter(k => LISTS[k] && Array.isArray(LISTS[k].words));
   const cleanWords = arr => arr
-    .filter(w => w && String(w.woord || '').trim() && String(w.betekenis || '').trim())
-    .map(w => ({ woord: String(w.woord).trim(), betekenis: String(w.betekenis).trim(), tip: String(w.tip || '').trim() }));
-  let DATA = [], NOPT = 0, TITEL = 'Woorden', listIdx = 0;
+    .filter(w => w && String(w.word || '').trim() && String(w.meaning || '').trim())
+    .map(w => ({ word: String(w.word).trim(), meaning: String(w.meaning).trim(), tip: String(w.tip || '').trim() }));
+  let DATA = [], NOPT = 0, TITLE = 'Woorden', listIdx = 0;
   const listName = () => LIST_KEYS[listIdx] || '';
   function useList(i) {
     if (!LIST_KEYS.length) return;
     listIdx = ((i % LIST_KEYS.length) + LIST_KEYS.length) % LIST_KEYS.length;
     const L = LISTS[LIST_KEYS[listIdx]];
-    DATA = cleanWords(L.woorden); NOPT = Math.min(4, DATA.length);
-    TITEL = String(L.titel || LIST_KEYS[listIdx]);
-    try { localStorage.setItem('woorden-lijst', LIST_KEYS[listIdx]); } catch (e) {}
+    DATA = cleanWords(L.words); NOPT = Math.min(4, DATA.length);
+    TITLE = String(L.title || LIST_KEYS[listIdx]);
+    try { localStorage.setItem('words-list', LIST_KEYS[listIdx]); } catch (e) {}
     loadBest();
   }
   function startList() {
-    const want = new URLSearchParams(location.search).get('lijst');
-    let stored = null; try { stored = localStorage.getItem('woorden-lijst'); } catch (e) {}
-    const std = typeof STANDAARD_LIJST === 'string' ? STANDAARD_LIJST : null;
+    const want = new URLSearchParams(location.search).get('list');
+    let stored = null; try { stored = localStorage.getItem('words-list'); } catch (e) {}
+    const std = typeof DEFAULT_LIST === 'string' ? DEFAULT_LIST : null;
     const pick = [want, std && !want ? std : null, stored, LIST_KEYS[LIST_KEYS.length - 1]].find(k => k && LIST_KEYS.includes(k));
     useList(Math.max(0, LIST_KEYS.indexOf(pick)));
   }
@@ -122,7 +123,7 @@ function start() {
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(60, 1, 0.05, 200);
-  const updateScenery = THEMA.scene(THREE, scene);   // sky, ground and weather come from themes.js
+  const updateScenery = THEME.scene(THREE, scene);   // sky, ground and weather come from themes.js
 
   // ---------- canvas helpers ----------
   function rr(ctx, x, y, w, h, r) {
@@ -193,7 +194,7 @@ function start() {
     b.onSelect = () => answer(b); ui.add(b.mesh); answerBtns.push(b);
   });
   const calmBtn = makeButton(0.95, 0.3, 512, 1); calmBtn.mesh.position.set(-0.51, 1.3, Z + 0.08);
-  calmBtn.onSelect = () => { if (DATA.length < 2) return; sfx('click'); newGame('rustig'); }; ui.add(calmBtn.mesh);
+  calmBtn.onSelect = () => { if (DATA.length < 2) return; sfx('click'); newGame('calm'); }; ui.add(calmBtn.mesh);
   const monBtn = makeButton(0.95, 0.3, 512, 1); monBtn.mesh.position.set(0.51, 1.3, Z + 0.08);
   monBtn.onSelect = () => { if (DATA.length < 2) return; sfx('click'); newGame('monsters'); }; ui.add(monBtn.mesh);
   const prevBtn = makeButton(0.24, 0.22, 256, 1); prevBtn.mesh.position.set(-0.78, 0.98, Z + 0.08);
@@ -202,10 +203,18 @@ function start() {
   prevBtn.onSelect = () => { sfx('click'); useList(listIdx - 1); drawStart(); drawListLabel(); };
   nextBtn.onSelect = () => { sfx('click'); useList(listIdx + 1); drawStart(); drawListLabel(); };
   ui.add(prevBtn.mesh); ui.add(nextBtn.mesh);
+  // home: during a game back to the start screen, on the start screen back to all games
+  const homeBtn = makeButton(0.5, 0.12, 512, 1); homeBtn.mesh.position.set(-0.62, 2.82, Z + 0.08); ui.add(homeBtn.mesh);
+  homeBtn.onSelect = () => {
+    sfx('click');
+    if (phase !== 'start') { goHome(); return; }
+    try { if (session) session.end(); } catch (e) {}
+    location.href = 'index.html';
+  };
   function drawListLabel() {
     const { ctx, c } = listLabel; panelBg(ctx, c, 60);
     ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    const txt = `📚 Lijst ${listIdx + 1} van ${LIST_KEYS.length}: ${TITEL}`;
+    const txt = `📚 Lijst ${listIdx + 1} van ${LIST_KEYS.length}: ${TITLE}`;
     fit(ctx, txt, c.width - 60, 58, 800); ctx.fillText(txt, c.width / 2, c.height / 2 + 2); listLabel.update();
   }
   function showModeButtons(on) {
@@ -224,7 +233,7 @@ function start() {
   function drawScore() {
     const { ctx, c } = S; panelBg(ctx, c, 60);
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#ffffff';
-    const life = mode === 'monsters' ? '     ' + '❤️'.repeat(Math.max(0, hearts)) + '🤍'.repeat(Math.max(0, LEVENS - hearts)) : '';
+    const life = mode === 'monsters' ? '     ' + '❤️'.repeat(Math.max(0, hearts)) + '🤍'.repeat(Math.max(0, LIVES - hearts)) : '';
     const txt = `⭐ ${score}     ✅ ${solved}/${total}     🔥 ${streak}     ⏱ ${fmtTime(elapsed())}${life}`;
     fit(ctx, txt, c.width - 80, 58, 800); ctx.fillText(txt, c.width / 2, c.height / 2 + 2); S.update();
   }
@@ -235,12 +244,12 @@ function start() {
   function drawStart() {
     const { ctx, c } = Q; panelBg(ctx, c, 44);
     ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = C.accent; fit(ctx, TITEL, c.width - 120, 112, 900); ctx.fillText(TITEL, 512, 140);
+    ctx.fillStyle = C.accent; fit(ctx, TITLE, c.width - 120, 112, 900); ctx.fillText(TITLE, 512, 140);
     ctx.fillStyle = '#ffffff'; ctx.font = `800 54px ${FONT}`; ctx.fillText('Wat betekent het?', 512, 215);
     ctx.fillStyle = C.text; ctx.font = `700 42px ${FONT}`;
     ctx.fillText(!LIST_KEYS.length ? 'wordlists.js niet gevonden' : DATA.length < 2 ? 'Zet minstens 2 woorden in deze lijst.' : `${DATA.length} woorden om te oefenen`, 512, 305);
     ctx.fillStyle = C.muted; ctx.font = `700 38px ${FONT}`;
-    const bc = bestTime('rustig'), bm = bestTime('monsters');
+    const bc = bestTime('calm'), bm = bestTime('monsters');
     if (!bc && !bm) ctx.fillText('Kies hoe je wilt spelen 👇', 512, 380);
     else {
       if (bc) ctx.fillText(`Snelste tijd rustig: ${fmtTime(bc)}`, 512, 375);
@@ -256,11 +265,11 @@ function start() {
     ctx.fillStyle = C.accent;
     if (toWord) {
       ctx.textBaseline = 'middle';
-      const f = fitLines(ctx, d.betekenis, 920, 4, 64, 800, 26), lh = f.size * 1.18, y0 = 195 - (f.lines.length - 1) * lh / 2;
+      const f = fitLines(ctx, d.meaning, 920, 4, 64, 800, 26), lh = f.size * 1.18, y0 = 195 - (f.lines.length - 1) * lh / 2;
       f.lines.forEach((l, i) => ctx.fillText(l, 512, y0 + i * lh));
       ctx.textBaseline = 'alphabetic';
     } else {
-      fit(ctx, d.woord, 920, 112, 900); ctx.fillText(d.woord, 512, 230);
+      fit(ctx, d.word, 920, 112, 900); ctx.fillText(d.word, 512, 230);
     }
     ctx.strokeStyle = C.line; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(60, 312); ctx.lineTo(964, 312); ctx.stroke();
@@ -269,7 +278,7 @@ function start() {
     } else {
       ctx.fillStyle = fb.good ? '#5cf0a0' : '#ff9a9d'; fit(ctx, fb.title, 920, 48, 900); ctx.fillText(fb.title, 512, 368);
       ctx.fillStyle = C.tip;
-      const line = d.tip ? '💡 ' + d.tip : (toWord ? `Het woord is: ${d.woord}` : `${d.woord} = ${d.betekenis}`);
+      const line = d.tip ? '💡 ' + d.tip : (toWord ? `Het woord is: ${d.word}` : `${d.word} = ${d.meaning}`);
       const f = fitLines(ctx, line, 900, 3, 38, 700, 22);
       f.lines.forEach((l, i) => ctx.fillText(l, 512, 420 + i * f.size * 1.15));
     }
@@ -313,27 +322,36 @@ function start() {
   const fmtTime = secs => `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
   // fastest time is kept per word list and settings, so a new list starts fresh
   function listKey() {
-    const src = JSON.stringify([DATA.map(d => [d.woord, d.betekenis]), AANTAL_VRAGEN, VRAAGSOORTEN]);
+    const src = JSON.stringify([DATA.map(d => [d.word, d.meaning]), QUESTION_COUNT, QUESTION_TYPES]);
     let h = 5381; for (let i = 0; i < src.length; i++) h = ((h << 5) + h + src.charCodeAt(i)) | 0;
-    return 'woorden-tijd-' + (h >>> 0).toString(36);
+    return 'words-time-' + (h >>> 0).toString(36);
   }
   const timeKey = m => listKey() + (m === 'monsters' ? '-m' : '');
   function bestTime(m) { try { return parseInt(localStorage.getItem(timeKey(m || mode)) || '0', 10) || 0; } catch (e) { return 0; } }
 
   // ---------- game logic ----------
-  const TYPE_MAP = { 'woord-naar-betekenis': 'w2b', 'betekenis-naar-woord': 'b2w' };
+  const TYPE_MAP = { 'word-to-meaning': 'w2b', 'meaning-to-word': 'b2w' };
   let phase = 'start', queue = [], cur = -1, curDir = 'w2b', curId = 0, options = [], wrongOnce = new Set(), total = 0;
   let score = 0, streak = 0, solved = 0, firstRight = 0, locked = false, waitBtn = null;
-  let mode = 'rustig', hearts = 0, requeued = false, waitCreature = null;
+  let mode = 'calm', hearts = 0, requeued = false, waitCreature = null;
   function setLayout() {
     const mon = mode === 'monsters' && phase === 'question';
     Q.mesh.position.set(0, mon ? 2.6 : 2.1, Z); Q.mesh.scale.setScalar(mon ? 0.85 : 1);
     S.mesh.position.set(0, mon ? 3.08 : 2.66, Z);
+    homeBtn.mesh.position.set(-0.62, mon ? 3.25 : 2.82, Z + 0.08); homeBtn.draw(phase === 'start' ? '🏠 Alle spellen' : '🏠 Start', 'idle');
     if (!renderer.xr.isPresenting) resize();
   }
+  const sheetMode = () => mode === 'calm' ? 'rustig' : mode;   // the sheet keeps its Dutch values
   const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
-  const label = i => curDir === 'b2w' ? DATA[i].woord : DATA[i].betekenis;
+  const label = i => curDir === 'b2w' ? DATA[i].word : DATA[i].meaning;
 
+  // timeouts that move the game on are dropped when the player has gone home in the meantime
+  let gen = 0;
+  const later = (fn, ms) => { const g = gen; setTimeout(() => { if (g === gen) fn(); }, ms); };
+  function goHome() {
+    gen++; queue = []; locked = false; waitBtn = null; requeued = false; endedAt = performance.now();
+    showStart();
+  }
   function showStart() {
     phase = 'start';
     answerBtns.forEach(b => b.mesh.visible = false);
@@ -341,12 +359,12 @@ function start() {
     S.mesh.visible = false; setLayout(); drawStart();
   }
   function newGame(m) {
-    mode = m === 'monsters' ? 'monsters' : 'rustig';
-    hearts = Math.max(1, Math.round(Number(LEVENS) || 3));
-    logGame('spel-gestart', { l: listName(), m: mode });
-    const types = (Array.isArray(VRAAGSOORTEN) ? VRAAGSOORTEN : []).map(t => TYPE_MAP[t]).filter(Boolean);
+    mode = m === 'monsters' ? 'monsters' : 'calm';
+    hearts = Math.max(1, Math.round(Number(LIVES) || 3));
+    logGame('spel-gestart', { l: listName(), m: sheetMode() });
+    const types = (Array.isArray(QUESTION_TYPES) ? QUESTION_TYPES : []).map(t => TYPE_MAP[t]).filter(Boolean);
     const pool = types.length ? types : ['w2b'];
-    const n = Math.round(Number(AANTAL_VRAGEN) || 0);
+    const n = Math.round(Number(QUESTION_COUNT) || 0);
     total = Math.max(1, Math.min(100, n > 0 ? n : DATA.length));
     const order = [];
     while (order.length < total) {
@@ -391,7 +409,7 @@ function start() {
       answerBtns.forEach((b, i) => { if (i < options.length) b.draw(label(options[i]), b === btn ? 'good' : 'dim'); });
       drawQuestion({ good: true, title: `Goed zo! 🎉  +${gain}` }); drawScore();
       sfx('good'); buzz(0.5, 80); burst(btn.mesh);
-      setTimeout(nextQuestion, 2000);
+      later(nextQuestion, 2000);
     } else {
       streak = 0; wrongOnce.add(curId);
       queue.splice(Math.min(2, queue.length), 0, { id: curId, i: cur, dir: curDir });
@@ -404,7 +422,7 @@ function start() {
   function endGame(lost) {
     endedAt = performance.now();
     const secs = elapsed();
-    logGame(lost ? 'spel-verloren' : 'spel-klaar', { l: listName(), m: mode, goed: lost ? solved : firstRight, n: total, t: secs });
+    logGame(lost ? 'spel-verloren' : 'spel-klaar', { l: listName(), m: sheetMode(), goed: lost ? solved : firstRight, n: total, t: secs });
     phase = 'end';
     let newBest = false, newTime = false;
     if (score > best) { best = score; newBest = true; try { localStorage.setItem(listKey() + '-score', String(best)); } catch (e) {} }
@@ -431,7 +449,7 @@ function start() {
     cr.sign.update();
   }
   function makeCreature(i, opt) {
-    const g = new THREE.Group(), body = THEMA.monster(THREE, i); g.add(body);
+    const g = new THREE.Group(), body = THEME.monster(THREE, i); g.add(body);
     const cr = { g, body, opt, text: label(opt), alive: true, state: 'walk', r: 7, angle: 0, wait: 0, melt: 0, hitShake: 0, phase: Math.random() * 6 };
     cr.sign = canvasPlane(SIGN_W, SIGN_H, 1024); cr.sign.mesh.position.set(0.12, 1.7, 0.05); g.add(cr.sign.mesh);
     drawSign(cr, 'idle');
@@ -461,8 +479,8 @@ function start() {
     const halfH = THREE.MathUtils.radToDeg(Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect));
     const k = vr ? 1 : Math.min(1, (halfH * 0.75) / 24);
     const angles = (vr ? [-60, -20, 20, 60] : [-24, -8, 8, 24]).map(a => a * k).slice(0, options.length);
-    const chars = (curDir === 'b2w' ? DATA[cur].betekenis : DATA[cur].woord).length + options.reduce((a, o) => a + label(o).length, 0);
-    const walkSecs = Math.min(60, Math.max(14, 13 + chars * 0.12)) / Math.max(0.2, Number(MONSTER_SNELHEID) || 1);
+    const chars = (curDir === 'b2w' ? DATA[cur].meaning : DATA[cur].word).length + options.reduce((a, o) => a + label(o).length, 0);
+    const walkSecs = Math.min(60, Math.max(14, 13 + chars * 0.12)) / Math.max(0.2, Number(MONSTER_SPEED) || 1);
     const speed = (7 - 0.9) / walkSecs;
     options.forEach((opt, i) => {
       const cr = makeCreature(i, opt);
@@ -512,7 +530,7 @@ function start() {
       meltOthers(null);
       drawQuestion({ good: true, title: retry ? 'Raak! Deze komt straks nog een keer.' : `Raak! 🎯  +${gain}` }); drawScore();
       sfx('good'); buzz(0.6, 90);
-      setTimeout(nextQuestion, 1900);
+      later(nextQuestion, 1900);
     } else {
       streak = 0; wrongOnce.add(curId);
       // keep throwing until you hit the right one; the question comes back once, 2 questions later
@@ -527,7 +545,7 @@ function start() {
     sfx('boing'); buzz(1, 300);
     const good = creatures.find(cr => cr.opt === cur);
     meltOthers(good);
-    if (hearts <= 0) { drawQuestion({ good: false, title: 'Au! Je levens zijn op.' }); drawScore(); setTimeout(() => endGame(true), 1800); return; }
+    if (hearts <= 0) { drawQuestion({ good: false, title: 'Au! Je levens zijn op.' }); drawScore(); later(() => endGame(true), 1800); return; }
     if (!requeued) { requeued = true; queue.splice(Math.min(2, queue.length), 0, { id: curId, i: cur, dir: curDir }); }
     good.state = 'back'; good.wait = 0; drawSign(good, 'good');
     waitCreature = good; locked = false;

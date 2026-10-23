@@ -1,394 +1,689 @@
 /* =====================================================================
-   INHOUD VAN HET VERKEERSSPEL
+   CONTENT OF THE TRAFFIC GAME (Verkeersheld), matched to the test prep for
+   groups 5-6, lessons 3 & 4 (right of way and going first).
 
-   1. BORDEN      – alle borden met hun betekenis
-   2. SITUATIES   – kruispunten met weggebruikers en de goede volgorde
-   3. LEVELS      – de levels op de kaart, in volgorde
+   1. SIGNS        – every sign with its meaning
+   2. SITUATIONS   – crossings with road users and the right order
+   3. QUESTIONS    – questions with answers to choose from
+   4. ROUTES       – stories: ride from crossing to crossing
+   5. LEVELS       – the levels on the map, in order
 
-   Tekst tussen enkele aanhalingstekens '…', elke regel eindigt met een komma.
-   Een apostrof in tekst schrijf je als \'  (bijv. 'auto\'s').
+   Code is English; everything the players read (meanings, questions,
+   answers, explanations, titles, stories) is Dutch.
+   Text goes between single quotes '…'; write an apostrophe as \' (e.g. 'auto\'s').
+   Directions are as seen from the player's side: south = near, north = far,
+   east = right, west = left.
    ===================================================================== */
 
 
 /* ---------------------------------------------------------------------
-   1. BORDEN
-   id:       de naam van de tekening (alleen bestaande tekeningen werken,
-             zie de lijst onderaan dit bestand)
-   familie:  verbod | gebod | waarschuwing | voorrang | informatie
+   1. SIGNS
+   id:       which drawing (only existing drawings work, see the list at the bottom)
+   family:   prohibition | mandatory | warning | priority | information
+   meaning:  what the player reads
    --------------------------------------------------------------------- */
-const BORDEN = [
-  // Verbodsborden (rood rondje: iets mag niet)
-  { id: 'verboden-in-te-rijden', familie: 'verbod',       betekenis: 'Verboden in te rijden: je mag deze weg niet in.' },
-  { id: 'gesloten',              familie: 'verbod',       betekenis: 'Gesloten voor alle voertuigen: niet met een fiets, brommer of auto.' },
-  { id: 'verboden-fietsers',     familie: 'verbod',       betekenis: 'Verboden voor fietsers.' },
-  { id: 'verboden-autos',        familie: 'verbod',       betekenis: 'Verboden voor auto\'s.' },
-  { id: 'verboden-voetgangers',  familie: 'verbod',       betekenis: 'Verboden voor voetgangers.' },
-  { id: 'max-30',                familie: 'verbod',       betekenis: 'Je mag hier niet harder dan 30 kilometer per uur.' },
-  { id: 'parkeerverbod',         familie: 'verbod',       betekenis: 'Parkeerverbod: je mag hier niet parkeren.' },
-  { id: 'stopverbod',            familie: 'verbod',       betekenis: 'Stopverbod: je mag hier niet stilstaan, ook niet even.' },
+const SIGNS = [
+  // Priority signs (in this test)
+  { id: 'priority-road',          family: 'priority',        meaning: 'Voorrangsweg: rijd je op deze weg, dan krijg je voorrang van bestuurders uit de zijwegen van links en rechts.' },
+  { id: 'end-priority-road',      family: 'priority',        meaning: 'Einde voorrangsweg: vanaf hier heb je geen voorrang meer.' },
+  { id: 'priority-crossing',      family: 'priority',        meaning: 'Voorrangskruispunt: op het volgende kruispunt krijg je voorrang van bestuurders uit de zijwegen van links en rechts.' },
+  { id: 'priority-side-left',     family: 'priority',        meaning: 'Op de volgende kruising krijg je voorrang van bestuurders uit de zijweg van links.' },
+  { id: 'priority-side-right',    family: 'priority',        meaning: 'Op de volgende kruising krijg je voorrang van bestuurders uit de zijweg van rechts.' },
+  { id: 'yield',                  family: 'priority',        meaning: 'Voorrang verlenen: geef voorrang aan bestuurders van links en rechts. Bij dit bord staan altijd haaientanden op de weg.' },
+  { id: 'stop',                   family: 'priority',        meaning: 'Stop: stop voor de stopstreep, ook als er niemand aankomt. Kijk links en rechts en geef voorrang.' },
 
-  // Gebodsborden (blauw rondje: iets moet)
-  { id: 'fietspad',              familie: 'gebod',        betekenis: 'Fietspad: fietsers moeten hier rijden.' },
-  { id: 'voetpad',               familie: 'gebod',        betekenis: 'Voetpad: hier mogen alleen voetgangers lopen.' },
-  { id: 'rechtdoor',             familie: 'gebod',        betekenis: 'Je moet hier rechtdoor gaan.' },
-  { id: 'rechtsaf',              familie: 'gebod',        betekenis: 'Je moet hier rechtsaf gaan.' },
-
-  // Waarschuwingsborden (driehoek met rode rand: let op)
-  { id: 'let-op-kruispunt',      familie: 'waarschuwing', betekenis: 'Let op: er komt een kruispunt.' },
-  { id: 'let-op-kinderen',       familie: 'waarschuwing', betekenis: 'Let op: kinderen, bijvoorbeeld bij een school.' },
-  { id: 'let-op-verkeerslichten',familie: 'waarschuwing', betekenis: 'Let op: er komen verkeerslichten.' },
-  { id: 'let-op-zebrapad',       familie: 'waarschuwing', betekenis: 'Let op: er komt een zebrapad.' },
-  { id: 'let-op-fietsers',       familie: 'waarschuwing', betekenis: 'Let op: fietsers steken over.' },
-
-  // Voorrangsborden
-  { id: 'haaientanden',          familie: 'voorrang',     betekenis: 'Voorrang verlenen: laat al het verkeer op de andere weg voorgaan.' },
-  { id: 'stop',                  familie: 'voorrang',     betekenis: 'Stop: helemaal stoppen en al het verkeer op de andere weg voor laten gaan.' },
-  { id: 'voorrangsweg',          familie: 'voorrang',     betekenis: 'Voorrangsweg: op de kruispunten heb jij voorrang.' },
-  { id: 'einde-voorrangsweg',    familie: 'voorrang',     betekenis: 'Einde voorrangsweg: je hebt geen voorrang meer.' },
-  { id: 'voorrangskruispunt',    familie: 'voorrang',     betekenis: 'Voorrangskruispunt: op het volgende kruispunt heb jij voorrang.' },
-
-  // Informatieborden (blauw vierkant)
-  { id: 'zebrapad',              familie: 'informatie',   betekenis: 'Hier is een zebrapad, een oversteekplaats voor voetgangers.' },
-  { id: 'parkeren',              familie: 'informatie',   betekenis: 'Parkeerplaats: hier mag je parkeren.' },
-  { id: 'doodlopend',            familie: 'informatie',   betekenis: 'Doodlopende weg: je kunt hier niet verder.' },
-  { id: 'eenrichtingsweg',       familie: 'informatie',   betekenis: 'Eenrichtingsweg: het verkeer mag hier maar één kant op.' },
+  // Other signs (not in this test; their levels are switched off)
+  { id: 'no-entry',               family: 'prohibition',     meaning: 'Verboden in te rijden: je mag deze weg niet in.' },
+  { id: 'closed',                 family: 'prohibition',     meaning: 'Gesloten voor alle voertuigen: niet met een fiets, brommer of auto.' },
+  { id: 'no-bikes',               family: 'prohibition',     meaning: 'Verboden voor fietsers.' },
+  { id: 'no-cars',                family: 'prohibition',     meaning: 'Verboden voor auto\'s.' },
+  { id: 'no-pedestrians',         family: 'prohibition',     meaning: 'Verboden voor voetgangers.' },
+  { id: 'max-30',                 family: 'prohibition',     meaning: 'Je mag hier niet harder dan 30 kilometer per uur.' },
+  { id: 'no-parking',             family: 'prohibition',     meaning: 'Parkeerverbod: je mag hier niet parkeren.' },
+  { id: 'no-stopping',            family: 'prohibition',     meaning: 'Stopverbod: je mag hier niet stilstaan, ook niet even.' },
+  { id: 'bike-path',              family: 'mandatory',       meaning: 'Fietspad: fietsers moeten hier rijden.' },
+  { id: 'footpath',               family: 'mandatory',       meaning: 'Voetpad: hier mogen alleen voetgangers lopen.' },
+  { id: 'ahead-only',             family: 'mandatory',       meaning: 'Je moet hier rechtdoor gaan.' },
+  { id: 'turn-right',             family: 'mandatory',       meaning: 'Je moet hier rechtsaf gaan.' },
+  { id: 'warn-crossing',          family: 'warning',         meaning: 'Let op: er komt een kruispunt.' },
+  { id: 'warn-children',          family: 'warning',         meaning: 'Let op: kinderen, bijvoorbeeld bij een school.' },
+  { id: 'warn-lights',            family: 'warning',         meaning: 'Let op: er komen verkeerslichten.' },
+  { id: 'warn-zebra',             family: 'warning',         meaning: 'Let op: er komt een zebrapad.' },
+  { id: 'warn-bikes',             family: 'warning',         meaning: 'Let op: fietsers steken over.' },
+  { id: 'zebra',                  family: 'information',     meaning: 'Hier is een zebrapad, een oversteekplaats voor voetgangers.' },
+  { id: 'parking',                family: 'information',     meaning: 'Parkeerplaats: hier mag je parkeren.' },
+  { id: 'dead-end',               family: 'information',     meaning: 'Doodlopende weg: je kunt hier niet verder.' },
+  { id: 'one-way',                family: 'information',     meaning: 'Eenrichtingsweg: het verkeer mag hier maar één kant op.' },
 ];
 
-/* De bordenfamilies.
-   naam:      de naam van de familie
-   betekenis: wat de naam betekent (staat in de Bordenwijzer 📖, zonder vorm of kleur:
-              die moet de speler zelf leren)
-   vorm:      de vorm en kleur; staat alleen in de uitleg van het level 'Bordenfamilies'
-   uitleg:    de hint die de speler ziet na een antwoord */
+/* The sign families.
+   name:     the family's name
+   meaning:  what the name means (shown in the Bordenwijzer 📖)
+   shape:    shape and colour; only in the explanation of the 'families' level
+   hint:     what the player sees after an answer
+   examples: (optional) up to 3 signs shown in the Bordenwijzer (default: the family's first three) */
 const FAMILIES = {
-  verbod:       { naam: 'Verbodsbord',       betekenis: 'Iets mag níet.',                 vorm: 'Rood rondje',
-                  uitleg: 'Een rood rondje betekent: dit mag niet.' },
-  gebod:        { naam: 'Gebodsbord',        betekenis: 'Iets móet.',                     vorm: 'Blauw rondje',
-                  uitleg: 'Een blauw rondje betekent: dit moet.' },
-  waarschuwing: { naam: 'Waarschuwingsbord', betekenis: 'Let op! Er komt iets aan.',      vorm: 'Driehoek met rode rand',
-                  uitleg: 'Een driehoek met een rode rand betekent: let op!' },
-  voorrang:     { naam: 'Voorrangsbord',     betekenis: 'Wie mag er eerst?',              vorm: 'Elk een eigen vorm',
-                  uitleg: 'Voorrangsborden vertellen wie er voor mag. Ze hebben een eigen vorm.' },
-  informatie:   { naam: 'Informatiebord',    betekenis: 'Het bord vertelt je iets handigs.',  vorm: 'Blauw vierkant',
-                  uitleg: 'Een blauw vierkant geeft informatie.' },
+  prohibition:  { name: 'Verbodsbord', meaning: 'Iets mag níet.', shape: 'Rood rondje',
+                  hint: 'Een rood rondje betekent: dit mag niet.' },
+  mandatory:    { name: 'Gebodsbord', meaning: 'Iets móet.', shape: 'Blauw rondje',
+                  hint: 'Een blauw rondje betekent: dit moet.' },
+  warning:      { name: 'Waarschuwingsbord', meaning: 'Let op! Er komt iets aan.', shape: 'Driehoek met rode rand',
+                  hint: 'Een driehoek met een rode rand betekent: let op!' },
+  priority:     { name: 'Voorrangsbord', meaning: 'Wie mag er eerst?', shape: 'Elk een eigen vorm',
+                  hint: 'Voorrangsborden vertellen wie er voor mag. Ze hebben een eigen vorm.', examples: ['yield', 'stop', 'priority-road'] },
+  information:  { name: 'Informatiebord', meaning: 'Het bord vertelt je iets handigs.', shape: 'Blauw vierkant',
+                  hint: 'Een blauw vierkant geeft informatie.' },
 };
 
 
 /* ---------------------------------------------------------------------
-   2. SITUATIES
-   De speler kijkt vanaf de kant 'zuid'. Dus:
-     zuid = dichtbij,  noord = achteraan,  oost = rechts,  west = links
-
-   zebrapad:  op welke wegen een zebrapad ligt, bijv. ['zuid']
-   borden:    per weg: 'haaientanden', 'stop' of 'voorrangsweg'
-   lichten:   per weg: 'rood' of 'groen'  (dan krijgen alle wegen een licht)
-   weggebruikers:
-     id:    een korte naam, gebruikt in 'volgorde'
-     type:  auto | fiets | voetganger | ambulance
-     van:   de weg waar hij vandaan komt
-     naar:  rechtdoor | linksaf | rechtsaf
-     kleur: (auto) rood, blauw, geel, groen, oranje, paars, wit
-     bij:   (voetganger) bij het zebrapad op deze weg
-   volgorde:  wie er eerst mag, dan tweede, enzovoort
-   uitleg:    wat de speler ziet als ze het fout doet
+   2. SITUATIONS
+   zebras:     roads with a zebra crossing, e.g. ['south']
+   signs:      a sign per road, e.g. { east: 'yield', north: 'priority-road' }
+   lights:     per road: 'red' or 'green' (then every road gets a light)
+   roadUsers:
+     id:     a short name, used in 'order'
+     type:   car | bike | pedestrian | ambulance | bus
+     from:   the road it comes from
+     turn:   straight | left | right
+     color:  (car) red, blue, yellow, green, orange, purple, white
+     at:     (pedestrian) crosses the road at this side
+   order:        who goes first, then second, and so on
+   explanation:  what the player sees after a mistake
    --------------------------------------------------------------------- */
-const SITUATIES = {
+const SITUATIONS = {
 
-  // --- zebrapad ---
-  'zebra-1': {
-    zebrapad: ['zuid'],
-    weggebruikers: [
-      { id: 'v', type: 'voetganger', bij: 'zuid' },
-      { id: 'a', type: 'auto', kleur: 'rood', van: 'zuid', naar: 'rechtdoor' },
+  // --- ordinary crossing: give way to traffic from the right ---
+  'right-1': {
+    roadUsers: [
+      { id: 'a', type: 'car', color: 'red', from: 'south', turn: 'straight' },
+      { id: 'f', type: 'bike', from: 'east', turn: 'straight' },
     ],
-    volgorde: ['v', 'a'],
-    uitleg: 'Een voetganger die bij het zebrapad wil oversteken, mag altijd eerst.',
+    order: ['f', 'a'],
+    explanation: 'Een gewone kruising: geef voorrang aan bestuurders van rechts. De fietser komt van rechts voor de auto.',
+  },
+  'right-2': {
+    roadUsers: [
+      { id: 'a', type: 'car', color: 'blue', from: 'south', turn: 'straight' },
+      { id: 'b', type: 'car', color: 'yellow', from: 'west', turn: 'straight' },
+    ],
+    order: ['a', 'b'],
+    explanation: 'Voor de gele auto komt de blauwe auto van rechts. Dus de blauwe auto mag eerst.',
+  },
+  'right-3': {
+    roadUsers: [
+      { id: 'f', type: 'bike', from: 'north', turn: 'straight' },
+      { id: 'a', type: 'car', color: 'green', from: 'east', turn: 'straight' },
+    ],
+    order: ['f', 'a'],
+    explanation: 'Voor de groene auto komt de fietser van rechts. Een fietser is ook een bestuurder, dus de fietser mag eerst.',
+  },
+  'right-4': {
+    roadUsers: [
+      { id: 'a', type: 'car', color: 'red', from: 'south', turn: 'straight' },
+      { id: 'f', type: 'bike', from: 'east', turn: 'straight' },
+      { id: 'b', type: 'car', color: 'green', from: 'north', turn: 'straight' },
+    ],
+    order: ['b', 'f', 'a'],
+    explanation: 'De groene auto heeft niemand rechts van zich, dus die mag eerst. Daarna de fietser, en dan de rode auto.',
+  },
+  'right-5': {
+    roadUsers: [
+      { id: 'a', type: 'car', color: 'orange', from: 'west', turn: 'straight' },
+      { id: 'f', type: 'bike', from: 'south', turn: 'straight' },
+    ],
+    order: ['f', 'a'],
+    explanation: 'Voor de oranje auto komt de fietser van rechts. Dus de fietser mag eerst.',
+  },
+  'right-6': {
+    roadUsers: [
+      { id: 'a', type: 'car', color: 'purple', from: 'east', turn: 'straight' },
+      { id: 'f', type: 'bike', from: 'south', turn: 'straight' },
+      { id: 'b', type: 'car', color: 'blue', from: 'west', turn: 'straight' },
+    ],
+    order: ['a', 'f', 'b'],
+    explanation: 'De paarse auto heeft niemand rechts van zich en mag eerst. Daarna de fietser, en als laatste de blauwe auto.',
+  },
+
+  // --- priority crossing: shark teeth, stop and priority road ---
+  'yield-1': {
+    signs: { east: 'yield', west: 'yield', north: 'priority-road', south: 'priority-road' },
+    roadUsers: [
+      { id: 'a', type: 'car', color: 'red', from: 'east', turn: 'straight' },
+      { id: 'f', type: 'bike', from: 'south', turn: 'straight' },
+    ],
+    order: ['f', 'a'],
+    explanation: 'Bij de auto staan haaientanden. Dan geef je voorrang aan bestuurders van links én rechts, ook als je zelf van rechts komt.',
+  },
+  'yield-2': {
+    signs: { east: 'yield', west: 'yield', north: 'priority-road', south: 'priority-road' },
+    roadUsers: [
+      { id: 'a', type: 'car', color: 'blue', from: 'west', turn: 'straight' },
+      { id: 'b', type: 'car', color: 'yellow', from: 'north', turn: 'straight' },
+    ],
+    order: ['b', 'a'],
+    explanation: 'De gele auto rijdt op de voorrangsweg en krijgt voorrang. De blauwe auto staat bij haaientanden en wacht.',
+  },
+  'yield-3': {
+    signs: { east: 'stop', west: 'stop', north: 'priority-road', south: 'priority-road' },
+    roadUsers: [
+      { id: 'a', type: 'car', color: 'green', from: 'east', turn: 'straight' },
+      { id: 'f', type: 'bike', from: 'north', turn: 'straight' },
+    ],
+    order: ['f', 'a'],
+    explanation: 'Bij een stopbord stop je voor de stopstreep, kijk je links en rechts en geef je voorrang aan iedereen op de andere weg.',
+  },
+  'yield-4': {
+    signs: { north: 'yield', south: 'yield', east: 'priority-road', west: 'priority-road' },
+    roadUsers: [
+      { id: 'f', type: 'bike', from: 'north', turn: 'straight' },
+      { id: 'a', type: 'car', color: 'orange', from: 'east', turn: 'straight' },
+    ],
+    order: ['a', 'f'],
+    explanation: 'Bij de fietser staan haaientanden. De auto rijdt op de voorrangsweg en krijgt voorrang.',
+  },
+  'yield-5': {
+    signs: { east: 'yield', west: 'yield', north: 'priority-road', south: 'priority-road' },
+    roadUsers: [
+      { id: 'f', type: 'bike', from: 'north', turn: 'straight' },
+      { id: 'a', type: 'car', color: 'red', from: 'south', turn: 'left' },
+      { id: 'b', type: 'car', color: 'blue', from: 'west', turn: 'straight' },
+    ],
+    order: ['f', 'a', 'b'],
+    explanation: 'Op de voorrangsweg gaat de fietser rechtdoor en mag eerst, dan de rode auto die afslaat. De blauwe auto staat bij haaientanden en wacht tot het laatst.',
+  },
+  'yield-6': {
+    signs: { south: 'priority-crossing', north: 'priority-crossing', east: 'yield', west: 'yield' },
+    roadUsers: [
+      { id: 'a', type: 'car', color: 'green', from: 'south', turn: 'straight' },
+      { id: 'b', type: 'car', color: 'purple', from: 'east', turn: 'straight' },
+    ],
+    order: ['a', 'b'],
+    explanation: 'De groene auto heeft het bord voorrangskruispunt en krijgt voorrang. De paarse auto komt van rechts, maar staat bij haaientanden.',
+  },
+
+  // --- going first: straight on and turning ---
+  'turning-1': {
+    roadUsers: [
+      { id: 'a', type: 'car', color: 'red', from: 'south', turn: 'left' },
+      { id: 'b', type: 'car', color: 'blue', from: 'north', turn: 'straight' },
+    ],
+    order: ['b', 'a'],
+    explanation: 'Ze rijden op dezelfde weg, tegemoet. Wie rechtdoor gaat, gaat voor. Wie voor hem langs wil afslaan, wacht.',
+  },
+  'turning-2': {
+    roadUsers: [
+      { id: 'f', type: 'bike', from: 'south', turn: 'straight' },
+      { id: 'a', type: 'car', color: 'yellow', from: 'south', turn: 'right' },
+    ],
+    order: ['f', 'a'],
+    explanation: 'De fietser gaat rechtdoor op dezelfde weg en de auto wil voor hem langs afslaan. Dan gaat de fietser voor.',
+  },
+  'turning-3': {
+    roadUsers: [
+      { id: 'a', type: 'car', color: 'green', from: 'north', turn: 'left' },
+      { id: 'f', type: 'bike', from: 'south', turn: 'straight' },
+    ],
+    order: ['f', 'a'],
+    explanation: 'De fietser gaat rechtdoor en de auto wil voor hem langs afslaan. Rechtdoor gaat voor.',
+  },
+  'turning-4': {
+    roadUsers: [
+      { id: 'a', type: 'car', color: 'orange', from: 'east', turn: 'left' },
+      { id: 'f', type: 'bike', from: 'west', turn: 'straight' },
+    ],
+    order: ['f', 'a'],
+    explanation: 'De fietser gaat rechtdoor en de auto wil voor hem langs afslaan. Rechtdoor gaat voor.',
+  },
+  'turning-5': {
+    roadUsers: [
+      { id: 'b', type: 'car', color: 'blue', from: 'north', turn: 'left' },
+      { id: 'a', type: 'car', color: 'red', from: 'south', turn: 'right' },
+    ],
+    order: ['a', 'b'],
+    explanation: 'Ze slaan allebei dezelfde weg in. De rode auto neemt een kleine bocht, de blauwe auto een grote bocht. De kleine bocht gaat voor.',
+  },
+  'turning-6': {
+    roadUsers: [
+      { id: 'f', type: 'bike', from: 'east', turn: 'right' },
+      { id: 'a', type: 'car', color: 'yellow', from: 'west', turn: 'left' },
+    ],
+    order: ['f', 'a'],
+    explanation: 'Ze slaan allebei dezelfde weg in. De fietser neemt een kleine bocht en gaat voor de auto, die een grote bocht maakt.',
+  },
+
+  // --- pedestrians ---
+  'zebra-1': {
+    zebras: ['south'],
+    roadUsers: [
+      { id: 'v', type: 'pedestrian', at: 'south' },
+      { id: 'a', type: 'car', color: 'red', from: 'south', turn: 'straight' },
+    ],
+    order: ['v', 'a'],
+    explanation: 'Een voetganger die bij het zebrapad wil oversteken, laat je voorgaan.',
   },
   'zebra-2': {
-    zebrapad: ['zuid'],
-    weggebruikers: [
-      { id: 'v', type: 'voetganger', bij: 'zuid' },
-      { id: 'a', type: 'auto', kleur: 'blauw', van: 'west', naar: 'rechtsaf' },
+    zebras: ['south'],
+    roadUsers: [
+      { id: 'v', type: 'pedestrian', at: 'south' },
+      { id: 'a', type: 'car', color: 'blue', from: 'west', turn: 'right' },
     ],
-    volgorde: ['v', 'a'],
-    uitleg: 'Ook als je afslaat, laat je de voetganger op het zebrapad eerst oversteken.',
+    order: ['v', 'a'],
+    explanation: 'Ook als je afslaat, laat je de voetganger bij het zebrapad eerst oversteken.',
   },
   'zebra-3': {
-    zebrapad: ['oost'],
-    weggebruikers: [
-      { id: 'v', type: 'voetganger', bij: 'oost' },
-      { id: 'f', type: 'fiets', van: 'oost', naar: 'rechtdoor' },
+    zebras: ['east'],
+    roadUsers: [
+      { id: 'v', type: 'pedestrian', at: 'east' },
+      { id: 'f', type: 'bike', from: 'east', turn: 'straight' },
     ],
-    volgorde: ['v', 'f'],
-    uitleg: 'Fietsers moeten ook stoppen voor een voetganger bij het zebrapad.',
+    order: ['v', 'f'],
+    explanation: 'Ook als je fietst, laat je een voetganger bij het zebrapad voorgaan.',
   },
   'zebra-4': {
-    zebrapad: ['noord'],
-    weggebruikers: [
-      { id: 'v', type: 'voetganger', bij: 'noord' },
-      { id: 'a', type: 'auto', kleur: 'geel', van: 'zuid', naar: 'rechtdoor' },
+    zebras: ['north'],
+    roadUsers: [
+      { id: 'v', type: 'pedestrian', at: 'north' },
+      { id: 'a', type: 'car', color: 'yellow', from: 'south', turn: 'straight' },
     ],
-    volgorde: ['v', 'a'],
-    uitleg: 'De auto rijdt over het zebrapad aan de overkant. Daar wacht een voetganger, dus die mag eerst.',
+    order: ['v', 'a'],
+    explanation: 'De auto rijdt over het zebrapad aan de overkant. Daar wacht een voetganger, dus die gaat voor.',
   },
-
-  // --- rechts gaat voor (gelijkwaardig kruispunt, geen borden) ---
-  'rechts-1': {
-    weggebruikers: [
-      { id: 'a', type: 'auto', kleur: 'rood', van: 'zuid', naar: 'rechtdoor' },
-      { id: 'f', type: 'fiets', van: 'oost', naar: 'rechtdoor' },
+  'zebra-5': {
+    roadUsers: [
+      { id: 'v', type: 'pedestrian', at: 'north' },
+      { id: 'f', type: 'bike', from: 'south', turn: 'straight' },
     ],
-    volgorde: ['f', 'a'],
-    uitleg: 'De fietser komt van rechts voor de auto. Wie van rechts komt, mag eerst.',
-  },
-  'rechts-2': {
-    weggebruikers: [
-      { id: 'a', type: 'auto', kleur: 'blauw', van: 'zuid', naar: 'rechtdoor' },
-      { id: 'b', type: 'auto', kleur: 'geel', van: 'west', naar: 'rechtdoor' },
-    ],
-    volgorde: ['a', 'b'],
-    uitleg: 'Voor de gele auto komt de blauwe auto van rechts. Dus de blauwe auto mag eerst.',
-  },
-  'rechts-3': {
-    weggebruikers: [
-      { id: 'f', type: 'fiets', van: 'noord', naar: 'rechtdoor' },
-      { id: 'a', type: 'auto', kleur: 'groen', van: 'oost', naar: 'rechtdoor' },
-    ],
-    volgorde: ['f', 'a'],
-    uitleg: 'Voor de groene auto komt de fietser van rechts. Dus de fietser mag eerst.',
-  },
-  'rechts-4': {
-    weggebruikers: [
-      { id: 'a', type: 'auto', kleur: 'rood', van: 'zuid', naar: 'rechtdoor' },
-      { id: 'f', type: 'fiets', van: 'oost', naar: 'rechtdoor' },
-      { id: 'b', type: 'auto', kleur: 'groen', van: 'noord', naar: 'rechtdoor' },
-    ],
-    volgorde: ['b', 'f', 'a'],
-    uitleg: 'De groene auto heeft niemand rechts van zich, dus die mag eerst. Daarna de fietser, en dan de rode auto.',
-  },
-  'rechts-5': {
-    weggebruikers: [
-      { id: 'a', type: 'auto', kleur: 'oranje', van: 'west', naar: 'rechtdoor' },
-      { id: 'f', type: 'fiets', van: 'zuid', naar: 'rechtdoor' },
-    ],
-    volgorde: ['f', 'a'],
-    uitleg: 'Voor de oranje auto komt de fietser van rechts. Dus de fietser mag eerst.',
-  },
-  'rechts-6': {
-    weggebruikers: [
-      { id: 'a', type: 'auto', kleur: 'paars', van: 'oost', naar: 'rechtdoor' },
-      { id: 'f', type: 'fiets', van: 'zuid', naar: 'rechtdoor' },
-      { id: 'b', type: 'auto', kleur: 'blauw', van: 'west', naar: 'rechtdoor' },
-    ],
-    volgorde: ['a', 'f', 'b'],
-    uitleg: 'De paarse auto heeft niemand rechts van zich en mag eerst. Daarna de fietser, en als laatste de blauwe auto.',
-  },
-
-  // --- rechtdoor en afslaan ---
-  'afslaan-1': {
-    weggebruikers: [
-      { id: 'a', type: 'auto', kleur: 'rood', van: 'zuid', naar: 'linksaf' },
-      { id: 'b', type: 'auto', kleur: 'blauw', van: 'noord', naar: 'rechtdoor' },
-    ],
-    volgorde: ['b', 'a'],
-    uitleg: 'Ze rijden op dezelfde weg. Wie rechtdoor gaat, mag eerst. Wie afslaat, wacht.',
-  },
-  'afslaan-2': {
-    weggebruikers: [
-      { id: 'f', type: 'fiets', van: 'zuid', naar: 'rechtdoor' },
-      { id: 'a', type: 'auto', kleur: 'geel', van: 'zuid', naar: 'rechtsaf' },
-    ],
-    volgorde: ['f', 'a'],
-    uitleg: 'De auto slaat af en de fietser gaat rechtdoor op dezelfde weg. Dan mag de fietser eerst.',
-  },
-  'afslaan-3': {
-    weggebruikers: [
-      { id: 'a', type: 'auto', kleur: 'groen', van: 'noord', naar: 'linksaf' },
-      { id: 'f', type: 'fiets', van: 'zuid', naar: 'rechtdoor' },
-    ],
-    volgorde: ['f', 'a'],
-    uitleg: 'De fietser gaat rechtdoor en de auto slaat af. Rechtdoor gaat voor afslaan.',
-  },
-  'afslaan-4': {
-    weggebruikers: [
-      { id: 'a', type: 'auto', kleur: 'oranje', van: 'oost', naar: 'linksaf' },
-      { id: 'f', type: 'fiets', van: 'west', naar: 'rechtdoor' },
-    ],
-    volgorde: ['f', 'a'],
-    uitleg: 'De fietser gaat rechtdoor en de auto slaat af. Rechtdoor gaat voor afslaan.',
-  },
-
-  // --- haaientanden, stop en voorrangsweg ---
-  'haaien-1': {
-    borden: { oost: 'haaientanden', west: 'haaientanden', noord: 'voorrangsweg', zuid: 'voorrangsweg' },
-    weggebruikers: [
-      { id: 'a', type: 'auto', kleur: 'rood', van: 'oost', naar: 'rechtdoor' },
-      { id: 'f', type: 'fiets', van: 'zuid', naar: 'rechtdoor' },
-    ],
-    volgorde: ['f', 'a'],
-    uitleg: 'Bij de auto staan haaientanden. Dan laat je iedereen op de andere weg voorgaan, ook als je van rechts komt.',
-  },
-  'haaien-2': {
-    borden: { oost: 'haaientanden', west: 'haaientanden', noord: 'voorrangsweg', zuid: 'voorrangsweg' },
-    weggebruikers: [
-      { id: 'a', type: 'auto', kleur: 'blauw', van: 'west', naar: 'rechtdoor' },
-      { id: 'b', type: 'auto', kleur: 'geel', van: 'noord', naar: 'rechtdoor' },
-    ],
-    volgorde: ['b', 'a'],
-    uitleg: 'De blauwe auto staat bij haaientanden. De gele auto rijdt op de voorrangsweg en mag eerst.',
-  },
-  'haaien-3': {
-    borden: { oost: 'stop', west: 'stop', noord: 'voorrangsweg', zuid: 'voorrangsweg' },
-    weggebruikers: [
-      { id: 'a', type: 'auto', kleur: 'groen', van: 'oost', naar: 'rechtdoor' },
-      { id: 'f', type: 'fiets', van: 'noord', naar: 'rechtdoor' },
-    ],
-    volgorde: ['f', 'a'],
-    uitleg: 'Bij een stopbord stop je helemaal en laat je iedereen op de andere weg voorgaan.',
-  },
-  'haaien-4': {
-    borden: { noord: 'haaientanden', zuid: 'haaientanden', oost: 'voorrangsweg', west: 'voorrangsweg' },
-    weggebruikers: [
-      { id: 'f', type: 'fiets', van: 'noord', naar: 'rechtdoor' },
-      { id: 'a', type: 'auto', kleur: 'oranje', van: 'oost', naar: 'rechtdoor' },
-    ],
-    volgorde: ['a', 'f'],
-    uitleg: 'Bij de fietser staan haaientanden. De auto rijdt op de voorrangsweg en mag eerst.',
-  },
-  'haaien-5': {
-    borden: { oost: 'haaientanden', west: 'haaientanden', noord: 'voorrangsweg', zuid: 'voorrangsweg' },
-    weggebruikers: [
-      { id: 'f', type: 'fiets', van: 'noord', naar: 'rechtdoor' },
-      { id: 'a', type: 'auto', kleur: 'rood', van: 'zuid', naar: 'linksaf' },
-      { id: 'b', type: 'auto', kleur: 'blauw', van: 'west', naar: 'rechtdoor' },
-    ],
-    volgorde: ['f', 'a', 'b'],
-    uitleg: 'Op de voorrangsweg gaat de fietser rechtdoor en mag eerst, dan de rode auto die afslaat. De blauwe auto staat bij haaientanden en wacht tot het laatst.',
-  },
-
-  // --- verkeerslichten ---
-  'licht-1': {
-    lichten: { zuid: 'rood', noord: 'rood', oost: 'groen', west: 'groen' },
-    weggebruikers: [
-      { id: 'a', type: 'auto', kleur: 'rood', van: 'zuid', naar: 'rechtdoor' },
-      { id: 'f', type: 'fiets', van: 'oost', naar: 'rechtdoor' },
-    ],
-    volgorde: ['f', 'a'],
-    uitleg: 'De fietser heeft groen licht. De auto heeft rood en moet wachten.',
-  },
-  'licht-2': {
-    lichten: { zuid: 'groen', noord: 'groen', oost: 'rood', west: 'rood' },
-    weggebruikers: [
-      { id: 'a', type: 'auto', kleur: 'blauw', van: 'zuid', naar: 'rechtdoor' },
-      { id: 'b', type: 'auto', kleur: 'geel', van: 'oost', naar: 'rechtdoor' },
-    ],
-    volgorde: ['a', 'b'],
-    uitleg: 'De blauwe auto heeft groen. Het verkeerslicht gaat voor de regel "rechts gaat voor".',
-  },
-  'licht-3': {
-    lichten: { west: 'groen', oost: 'groen', noord: 'rood', zuid: 'rood' },
-    weggebruikers: [
-      { id: 'a', type: 'auto', kleur: 'groen', van: 'west', naar: 'rechtdoor' },
-      { id: 'f', type: 'fiets', van: 'zuid', naar: 'rechtdoor' },
-    ],
-    volgorde: ['a', 'f'],
-    uitleg: 'De auto heeft groen licht en mag eerst, ook al komt de fietser van rechts.',
-  },
-  'licht-4': {
-    lichten: { zuid: 'groen', noord: 'groen', oost: 'rood', west: 'rood' },
-    weggebruikers: [
-      { id: 'a', type: 'auto', kleur: 'rood', van: 'zuid', naar: 'linksaf' },
-      { id: 'b', type: 'auto', kleur: 'blauw', van: 'noord', naar: 'rechtdoor' },
-      { id: 'f', type: 'fiets', van: 'oost', naar: 'rechtdoor' },
-    ],
-    volgorde: ['b', 'a', 'f'],
-    uitleg: 'Beide auto\'s hebben groen: wie rechtdoor gaat mag eerst, dan wie afslaat. De fietser heeft rood en wacht.',
-  },
-  'licht-5': {
-    borden: { zuid: 'haaientanden' },
-    lichten: { zuid: 'groen', noord: 'groen', oost: 'rood', west: 'rood' },
-    weggebruikers: [
-      { id: 'a', type: 'auto', kleur: 'oranje', van: 'zuid', naar: 'rechtdoor' },
-      { id: 'b', type: 'auto', kleur: 'paars', van: 'oost', naar: 'rechtdoor' },
-    ],
-    volgorde: ['a', 'b'],
-    uitleg: 'Een verkeerslicht gaat voor een bord. De oranje auto heeft groen, dus die mag eerst.',
+    order: ['f', 'v'],
+    explanation: 'Hier is géén zebrapad. Een voetganger die de weg wil oversteken laat de fietser voorgaan.',
   },
 
   // --- ambulance ---
-  'ambu-1': {
-    weggebruikers: [
-      { id: 'z', type: 'ambulance', van: 'west', naar: 'rechtdoor' },
-      { id: 'a', type: 'auto', kleur: 'rood', van: 'zuid', naar: 'rechtdoor' },
+  'ambulance-1': {
+    roadUsers: [
+      { id: 'z', type: 'ambulance', from: 'west', turn: 'straight' },
+      { id: 'a', type: 'car', color: 'red', from: 'south', turn: 'straight' },
     ],
-    volgorde: ['z', 'a'],
-    uitleg: 'Een ambulance met zwaailicht en sirene mag altijd eerst. Iedereen maakt ruimte.',
+    order: ['z', 'a'],
+    explanation: 'Een voertuig met blauwe zwaailichten en een sirene laat je altijd voorgaan.',
   },
-  'ambu-2': {
-    weggebruikers: [
-      { id: 'z', type: 'ambulance', van: 'zuid', naar: 'linksaf' },
-      { id: 'f', type: 'fiets', van: 'noord', naar: 'rechtdoor' },
+  'ambulance-2': {
+    roadUsers: [
+      { id: 'z', type: 'ambulance', from: 'south', turn: 'left' },
+      { id: 'f', type: 'bike', from: 'north', turn: 'straight' },
     ],
-    volgorde: ['z', 'f'],
-    uitleg: 'Een ambulance met zwaailicht en sirene mag altijd eerst, ook als hij afslaat.',
+    order: ['z', 'f'],
+    explanation: 'Een ambulance met zwaailichten en sirene gaat altijd voor, ook als hij afslaat.',
+  },
+  'ambulance-3': {
+    signs: { west: 'yield', east: 'yield', north: 'priority-road', south: 'priority-road' },
+    roadUsers: [
+      { id: 'z', type: 'ambulance', from: 'west', turn: 'straight' },
+      { id: 'f', type: 'bike', from: 'south', turn: 'straight' },
+    ],
+    order: ['z', 'f'],
+    explanation: 'Ook al staan er haaientanden bij de ambulance: met zwaailichten en sirene gaat hij voor.',
+  },
+
+  // --- traffic lights (not in this test) ---
+  'lights-1': {
+    lights: { south: 'red', north: 'red', east: 'green', west: 'green' },
+    roadUsers: [
+      { id: 'a', type: 'car', color: 'red', from: 'south', turn: 'straight' },
+      { id: 'f', type: 'bike', from: 'east', turn: 'straight' },
+    ],
+    order: ['f', 'a'],
+    explanation: 'De fietser heeft groen licht. De auto heeft rood en moet wachten.',
+  },
+  'lights-2': {
+    lights: { south: 'green', north: 'green', east: 'red', west: 'red' },
+    roadUsers: [
+      { id: 'a', type: 'car', color: 'blue', from: 'south', turn: 'straight' },
+      { id: 'b', type: 'car', color: 'yellow', from: 'east', turn: 'straight' },
+    ],
+    order: ['a', 'b'],
+    explanation: 'De blauwe auto heeft groen. Het verkeerslicht gaat voor de regel "rechts gaat voor".',
   },
 };
 
 
 /* ---------------------------------------------------------------------
-   3. LEVELS (in volgorde op de kaart)
-   soort:  families  – bij welke familie hoort dit bord?
-           borden    – wat betekent dit bord? (families: welke borden)
-           kruispunt – wie mag eerst? (situaties: welke situaties)
-           eindtoets – een mix van alles hiervoor
-   aan:    false = dit level zit (nog) niet in het spel
-   vragen: hoeveel vragen (bij borden en eindtoets)
+   3. QUESTIONS
+   question:     the question
+   sign:         (optional) a sign shown with the question
+   answers:      2 to 4 answers (in a route: 2 or 3, there are only 3 roads to choose)
+   correct:      which answer is right: 0 = the first, 1 = the second, …
+   explanation:  what the player sees after answering
+   With 2 answers the order stays in a quiz level; with more they're shuffled.
+   show:         (optional, only on a route) who or what the question is about,
+                 as seen coming from 'south' (it turns along with where you come from):
+                   { type: 'car', color: 'blue', from: 'east', turn: 'left' }  – rides in and waits
+                   { type: 'pedestrian', at: 'south' }   – wants to cross your road, just before the crossing
+                   { type: 'bus', pose: 'busStop' }      – bus at the stop on your road, just before the crossing
+                   { type: 'car', pose: 'driveway' }     – car coming out of a driveway onto your road (sign: 'parking' allowed)
+                   { type: 'car', pose: 'reversing' }    – car reversing out of a driveway
+                   { zebra: 'south' }                    – a zebra crossing on that road
+                   { unpaved: 'east' }                   – that road is a sand track
+                 Add  first: true  to whoever goes before you: once you've picked a road they go and
+                 you wait. The others go after you.
+                 Put whatever crosses your road on 'south' or in a pose: with 2 answers you turn
+                 left or right, so whatever stands straight ahead ('north') you never meet.
+                 Questions that say which way you go ('Je fietst rechtdoor…') don't fit a route.
+   situation:    (optional) true for a question about a traffic situation ('Wie gaat voor?')
+                 that has no 'show'. A question with 'show' is a situation question anyway.
+                 To turn around at a closed road the player gets a knowledge question:
+                 never a situation question, unless the stop names it as its returnQuestion.
+   --------------------------------------------------------------------- */
+const QUESTIONS = {
+
+  // --- right of way or going first? ---
+  'rule-1': {
+    question: 'Voor wie gelden de voorrangsregels?',
+    answers: ['Voor bestuurders onderling', 'Voor voetgangers', 'Voor iedereen, ook voetgangers'], correct: 0,
+    explanation: 'Voorrangsregels gelden voor bestuurders onderling. Ook een fietser is een bestuurder.',
+  },
+  'rule-2': {
+    question: 'Waar gelden de voorrangsregels?',
+    answers: ['Alleen op kruisingen', 'Overal op de weg', 'Alleen bij een zebrapad'], correct: 0,
+    explanation: 'Voorrangsregels gelden alleen op kruisingen, als je te maken krijgt met bestuurders die uit een zijweg komen.',
+  },
+  'rule-3': {
+    question: 'Je loopt en wilt bij een kruising oversteken. Een auto komt uit een zijweg van rechts. Wie gaat eerst?', situation: true,
+    answers: ['De auto', 'Ik, de voetganger'], correct: 0,
+    explanation: 'Als voetganger gelden de voorrangsregels niet voor jou. Je laat bestuurders uit een zijweg van links of rechts voorgaan.',
+  },
+  'rule-4': {
+    question: 'Ben je een bestuurder als je fietst?',
+    answers: ['Ja', 'Nee'], correct: 0,
+    explanation: 'Ja, een fietser is een bestuurder. De voorrangsregels gelden dus ook voor jou als je fietst.',
+  },
+  'rule-5': {
+    question: 'Voor wie gelden de voorgaanregels?',
+    answers: ['Voor bestuurders én voetgangers', 'Alleen voor auto\'s', 'Alleen voor voetgangers'], correct: 0,
+    explanation: 'Voorgaanregels gelden voor bestuurders en voetgangers, dus ook voor jou als je loopt of fietst.',
+  },
+  'rule-6': {
+    question: 'Wanneer gebruik je de voorgaanregels?',
+    answers: ['Bij verkeer dat met jou op dezelfde weg is', 'Bij verkeer uit een zijweg', 'Alleen bij verkeerslichten'], correct: 0,
+    explanation: 'Voorgaanregels gelden bij verkeer dat met jou op dezelfde weg is: verkeer dat jou tegemoet of achterop komt.',
+  },
+  'rule-7': {
+    question: 'Wat is een gewone kruising?',
+    answers: ['Een kruising zonder voorrangstekens of voorrangsborden', 'Een kruising met haaientanden', 'Een kruising met een stopbord'], correct: 0,
+    explanation: 'Een gewone kruising heeft geen voorrangstekens en geen voorrangsborden. De wegen moeten wel verhard zijn.',
+  },
+  'rule-8': {
+    question: 'Je fietst op een gewone kruising. Aan wie geef je voorrang?',
+    answers: ['Aan bestuurders van rechts', 'Aan bestuurders van links', 'Aan niemand'], correct: 0,
+    explanation: 'Op een gewone kruising geef je voorrang aan bestuurders van rechts. Van bestuurders van links krijg je voorrang.',
+  },
+  'rule-9': {
+    question: 'Een zandweg komt uit op een asfaltweg. Is dat een gewone kruising?',
+    answers: ['Nee', 'Ja'], correct: 0,
+    explanation: 'Bij een gewone kruising moeten de weg en het fietspad verhard zijn, van steen of asfalt. Een zandweg is onverhard.',
+  },
+  'rule-10': {
+    question: 'Hoe zie je dat je bij een voorrangskruising bent?',
+    answers: ['Aan de voorrangstekens langs de weg en op het wegdek', 'Aan de verkeerslichten', 'Dat zie je niet'], correct: 0,
+    explanation: 'Bij voorrangskruisingen staan voorrangsborden langs de weg en haaientanden op het wegdek.',
+  },
+  'rule-11': {
+    question: 'Gelden voorrangsborden ook voor voetgangers?',
+    answers: ['Nee', 'Ja'], correct: 0,
+    explanation: 'Voorrangsborden gelden alleen voor bestuurders onderling.',
+  },
+
+  // --- signs in practice ---
+  'sign-1': {
+    question: 'Je fietst naar dit bord. Er komt niemand aan. Wat doe je?', sign: 'stop',
+    answers: ['Toch stoppen voor de stopstreep', 'Gewoon doorfietsen'], correct: 0,
+    explanation: 'Bij een stopbord stop je altijd voor de stopstreep, ook als er niemand aankomt. Dan kijk je links en rechts.',
+  },
+  'sign-2': {
+    question: 'Wat ligt er altijd op de weg bij dit bord?', sign: 'yield',
+    answers: ['Haaientanden', 'Een zebrapad', 'Een stopstreep'], correct: 0,
+    explanation: 'Bij het bord "voorrang verlenen" staan altijd haaientanden op het wegdek.',
+  },
+  'sign-3': {
+    question: 'Je fietst op een weg met dit bord. Een auto komt uit een zijweg van rechts. Wie gaat eerst?', sign: 'priority-road',
+    show: [{ type: 'car', color: 'blue', from: 'east' }],
+    answers: ['Ik', 'De auto'], correct: 0,
+    explanation: 'Op de voorrangsweg krijg jij voorrang van bestuurders uit de zijwegen, van links en van rechts.',
+  },
+  'sign-4': {
+    question: 'Jij hebt voorrang. Een auto van links remt niet af. Wat doe je?',
+    show: [{ type: 'car', color: 'red', from: 'west', first: true }],
+    answers: ['Goed kijken en zo nodig wachten', 'Doorfietsen, ik heb toch voorrang'], correct: 0,
+    explanation: 'Ook al moet jij voorrang krijgen, kijk goed of de ander wel voor je stopt.',
+  },
+
+  // --- going first on a bike ---
+  'goFirst-1': {
+    question: 'Je fietst buiten de bebouwde kom. Een bus wil wegrijden bij de halte. Wie gaat voor?',
+    show: [{ type: 'bus', color: 'yellow', pose: 'busStop' }],
+    answers: ['Ik', 'De bus'], correct: 0,
+    explanation: 'Buiten de bebouwde kom ga jij voor als een bus wegrijdt bij de halte.',
+  },
+  'goFirst-2': {
+    question: 'Je fietst binnen de bebouwde kom. Een bus wil wegrijden bij de halte. Wie gaat voor?',
+    show: [{ type: 'bus', color: 'yellow', pose: 'busStop', first: true }],
+    answers: ['Ik', 'De bus'], correct: 1,
+    explanation: 'Binnen de bebouwde kom laat je een bus die wegrijdt bij de halte voorgaan.',
+  },
+  'goFirst-3': {
+    question: 'Je fietst. Een auto rijdt achteruit de weg op. Wie gaat voor?',
+    show: [{ type: 'car', color: 'green', pose: 'reversing' }],
+    answers: ['Ik', 'De auto'], correct: 0,
+    explanation: 'Iemand die achteruitrijdt, laat jou voorgaan.',
+  },
+  'goFirst-4': {
+    question: 'Je fietst. Een auto komt van een parkeerplaats. Wie gaat voor?',
+    show: [{ type: 'car', color: 'blue', pose: 'driveway', sign: 'parking' }],
+    answers: ['Ik', 'De auto'], correct: 0,
+    explanation: 'Wie van een parkeerplaats komt, laat jou voorgaan.',
+  },
+  'goFirst-5': {
+    question: 'Je fietst. Iemand komt uit een uitrit. Wie gaat voor?',
+    show: [{ type: 'car', color: 'white', pose: 'driveway' }],
+    answers: ['Ik', 'De ander'], correct: 0,
+    explanation: 'Wie uit een uitrit komt, laat jou voorgaan.',
+  },
+  'goFirst-6': {
+    question: 'Je fietst. Iemand komt van een erf. Wie gaat voor?',
+    show: [{ type: 'car', color: 'orange', pose: 'driveway' }],
+    answers: ['Ik', 'De ander'], correct: 0,
+    explanation: 'Wie van een erf komt, laat jou voorgaan.',
+  },
+  'goFirst-7': {
+    question: 'Je fietst. Iemand komt van een oprit. Wie gaat voor?',
+    show: [{ type: 'car', color: 'purple', pose: 'driveway' }],
+    answers: ['Ik', 'De ander'], correct: 0,
+    explanation: 'Wie van een oprit komt, laat jou voorgaan.',
+  },
+  'goFirst-8': {
+    question: 'Je fietst. Iemand komt uit een onverharde weg (een zandpad). Wie gaat voor?',
+    show: [{ unpaved: 'east' }, { type: 'bike', from: 'east' }],
+    answers: ['Ik', 'De ander'], correct: 0,
+    explanation: 'Wie uit een onverharde weg komt, laat jou voorgaan.',
+  },
+  'goFirst-9': {
+    question: 'Je fietst. Een voetganger wil de weg oversteken. Er is geen zebrapad en geen verkeerslicht. Wie gaat voor?',
+    show: [{ type: 'pedestrian', at: 'south' }],
+    answers: ['Ik', 'De voetganger'], correct: 0,
+    explanation: 'Zonder zebrapad of verkeerslicht ga jij voor. Bij een zebrapad laat je de voetganger voorgaan.',
+  },
+  'goFirst-10': {
+    question: 'Je fietst. Een voetganger wil bij het zebrapad oversteken. Wie gaat voor?', sign: 'zebra',
+    show: [{ zebra: 'south' }, { type: 'pedestrian', at: 'south', first: true }],
+    answers: ['Ik', 'De voetganger'], correct: 1,
+    explanation: 'Een voetganger die bij het zebrapad wil oversteken, laat je voorgaan.',
+  },
+  'goFirst-11': {
+    question: 'Je fietst. Een voetganger die slecht kan lopen, wil oversteken. Wie gaat voor?',
+    show: [{ type: 'pedestrian', at: 'south', first: true }],
+    answers: ['Ik', 'De voetganger'], correct: 1,
+    explanation: 'Een voetganger die slecht kan lopen, laat je voorgaan.',
+  },
+  'goFirst-12': {
+    question: 'Je fietst. Een voetganger die slecht ziet of blind is, wil oversteken. Wie gaat voor?',
+    show: [{ type: 'pedestrian', at: 'south', first: true }],
+    answers: ['Ik', 'De voetganger'], correct: 1,
+    explanation: 'Een voetganger die slecht ziet of blind is, laat je voorgaan.',
+  },
+  'goFirst-13': {
+    question: 'Je fietst. Er komt een ambulance met blauwe zwaailichten en een sirene. Wie gaat voor?',
+    show: [{ type: 'ambulance', from: 'west', first: true }],
+    answers: ['Ik', 'De ambulance'], correct: 1,
+    explanation: 'Een voertuig met blauwe zwaailichten en een sirene laat je altijd voorgaan.',
+  },
+  'goFirst-14': {
+    question: 'Je slaat rechtsaf, een kleine bocht. Een auto van de overkant slaat dezelfde weg in met een grote bocht. Wie gaat voor?', situation: true,
+    show: [{ type: 'car', color: 'yellow', from: 'north', turn: 'left' }],
+    answers: ['Ik', 'De auto'], correct: 0,
+    explanation: 'Wie bij het afslaan een kleine bocht neemt, gaat voor op wie een grote bocht neemt naar dezelfde weg.',
+  },
+  'goFirst-15': {
+    question: 'Je fietst rechtdoor op de rotonde. Een auto wil voor je langs afslaan. Wie gaat voor?', situation: true,
+    answers: ['Ik', 'De auto'], correct: 0,
+    explanation: 'Wie rechtdoor op de rotonde wil, gaat voor op verkeer dat voor je langs wil afslaan.',
+  },
+  'goFirst-16': {
+    question: 'Je fietst rechtdoor. Een auto op dezelfde weg wil voor je langs afslaan. Wie gaat voor?', situation: true,
+    show: [{ type: 'car', color: 'red', from: 'north', turn: 'left' }],
+    answers: ['Ik', 'De auto'], correct: 0,
+    explanation: 'Wie rechtdoor op dezelfde weg wil, gaat voor op verkeer dat voor je langs wil afslaan.',
+  },
+};
+
+
+/* ---------------------------------------------------------------------
+   4. ROUTES
+   A route is a story: the player rides from crossing to crossing. At each
+   crossing (a 'stop') they pick a road and just ride on: nobody says it was right.
+   A wrong road ends at a closed road. To turn around they answer an extra
+   question (the 'returnQuestion', or else a knowledge question from the quiz
+   levels, see 'situation' at QUESTIONS). Wrong? One more question, then a traffic
+   controller helps. Back at the crossing they answer its question again; the
+   right answer is still on the same road. After 3 wrong roads at one crossing a
+   traffic controller shows the way.
+   At the end the prize is waiting.
+
+   vehicle:   bike | car
+   color:     the colour of your car or of your shirt on the bike: red, blue, yellow, green, orange, purple, white
+              (empty = a red car; the shirt changes every ride)
+   scenery:   (optional) the surroundings at the start: village | city | forest | polder
+   prizes:    where you ride to; each ride picks one that suits the theme:
+                name:    what the place is called in the story ('het zwembad'); {prize} in a story becomes this name
+                emoji, text: what the player sees at the end
+                place:   (optional) the place itself as the last scene: pool | iceRink | hauntedHouse | playground
+                         (without place: a trophy on a crossing)
+                themes:  (optional) only in these themes, e.g. ['winter']; without themes it always fits
+   stops:     the crossings, in order. Each stop is one of these:
+     { story: '…', questions: ['rule-4'] }                – a question from QUESTIONS
+     { story: '…', questions: [{ question: '…', answers: [...], correct: 0, explanation: '…', sign: '…' }] }
+                                                          – a question written right here
+     { story: '…', situations: ['right-1'] }              – who goes first? One of the road users becomes
+                                                            your bike or car (me: 'f' picks which one).
+   With several questions or situations in the list, each ride picks one (never the
+   same one twice in a ride). So the kids learn the rules, not the route.
+   The story should fit every question in the list.
+
+   scenery:         (optional) from this stop on other surroundings: village | city | forest | polder
+                    (the next stops keep it until another one is given)
+   returnQuestion:  (optional) the extra question when the player takes the wrong road here:
+                    a key from QUESTIONS or { question, answers, correct, explanation }
+   explanation:     (optional, with a situation) own explanation, if the situation's one names
+                    a colour that doesn't fit: 'me' gets the colour of your bike or car
+   A question has 2 or 3 answers (there are no more roads). Which answer is on which
+   road differs every ride. The crossing turns along with the side you come from.
+   --------------------------------------------------------------------- */
+const ROUTES = {
+  'fietstocht': {
+    vehicle: 'bike', scenery: 'city',
+    prizes: [
+      { name: 'het zwembad', emoji: '🏊', text: 'Je bent bij het zwembad!', place: 'pool', themes: ['summer'] },
+      { name: 'de schaatsbaan', emoji: '⛸️', text: 'Je bent bij de schaatsbaan!', place: 'iceRink', themes: ['winter'] },
+      { name: 'het spookhuis', emoji: '👻', text: 'Je bent bij het spookhuis! Boe!', place: 'hauntedHouse', themes: ['halloween'] },
+      { name: 'de speeltuin', emoji: '🛝', text: 'Je bent bij de speeltuin!', place: 'playground' },
+    ],
+    stops: [
+      { story: 'Het is zaterdag en je fietst naar {prize}. Bij elke kruising kies je de weg met het goede antwoord.',
+        questions: ['rule-4', 'rule-1', 'rule-5', 'rule-2', 'goFirst-2'] },
+      { story: 'Op deze gewone kruising komt er nog iemand aan.',
+        situations: ['right-1', 'right-3', 'right-5'] },
+      { story: 'Je fietst door het dorp. Bij de volgende kruising staat een bord.', scenery: 'village',
+        questions: ['sign-1', 'sign-2', 'sign-3',
+          { sign: 'yield', question: 'Wat moet je doen bij dit bord?', answers: ['Voorrang geven aan links én rechts', 'Alleen voorrang geven aan rechts', 'Gewoon doorfietsen'], correct: 0, explanation: 'Bij haaientanden geef je voorrang aan bestuurders van links én van rechts.' }] },
+      { story: 'Op deze kruising slaan jullie af. Wie gaat er voor?',
+        situations: ['turning-3', 'turning-5', 'turning-6'] },
+      { story: 'Je fietst de stad uit, het bos in. Wie gaat er voor?', scenery: 'forest',
+        questions: ['goFirst-1', 'goFirst-3', 'goFirst-4', 'goFirst-5', 'goFirst-6', 'goFirst-7', 'goFirst-8'] },
+      { story: 'Nu kom je bij een voorrangskruising.',
+        situations: ['yield-1', 'yield-3', 'yield-5'] },
+      { story: 'Je fietst door de polder. Je bent er bijna! Nog één kruising…', scenery: 'polder',
+        questions: ['goFirst-9', 'goFirst-10', 'goFirst-11', 'goFirst-12', 'goFirst-13'] },
+    ],
+  },
+};
+
+
+/* ---------------------------------------------------------------------
+   5. LEVELS (in order on the map)
+   id:        stays the same: it's what the Google Sheet logs and what saved stars use
+   kind:      quiz       – questions from QUESTIONS (questions: which ones)
+              signs      – what does this sign mean? (families: which signs)
+              crossing   – who goes first? (situations: which ones)
+              route      – a story from ROUTES (route: which one)
+              families   – which family does this sign belong to?
+              finalTest  – a mix of all levels that are switched on
+   enabled:   false = this level is not in the game (yet)
+   count:     how many questions (empty = all)
    --------------------------------------------------------------------- */
 const LEVELS = [
-  { id: 'families', titel: 'Bordenfamilies', soort: 'families', vragen: 8,
-    uitleg: 'Aan de vorm en kleur van een bord zie je wat voor bord het is.\nRood rondje: iets mag niet.\nBlauw rondje: iets moet.\nDriehoek met rode rand: let op!\nBlauw vierkant: informatie.\nVoorrangsborden hebben een eigen vorm, zoals het stopbord.' },
+  { id: 'voorrang-voorgaan', title: 'Voorrang of voorgaan?', kind: 'quiz', questions: ['rule-1', 'rule-2', 'rule-3', 'rule-4', 'rule-5', 'rule-6', 'rule-11'],
+    explanation: 'Voorrang: tussen bestuurders, op kruisingen, met verkeer uit een zijweg.\nVoorgaan: voor bestuurders én voetgangers, met verkeer op dezelfde weg (tegemoet of achterop).\nLet op: een fietser is ook een bestuurder!' },
 
-  { id: 'zebrapad', titel: 'Het zebrapad', soort: 'kruispunt',
-    situaties: ['zebra-1', 'zebra-2', 'zebra-3', 'zebra-4'],
-    uitleg: 'Een voetganger die bij het zebrapad wil oversteken, mag altijd eerst. Auto\'s én fietsers stoppen.\nTik de weggebruikers aan in de volgorde waarin ze mogen gaan.' },
+  { id: 'rechts', title: 'Gewone kruising', kind: 'crossing', situations: ['right-1', 'right-2', 'right-3', 'right-4', 'right-5', 'right-6'],
+    explanation: 'Een gewone kruising heeft geen voorrangsborden of voorrangstekens, en de wegen zijn verhard.\nGeef voorrang aan bestuurders van rechts. Van links krijg je voorrang.\nTik de weggebruikers aan in de volgorde waarin ze mogen gaan.' },
 
-  { id: 'verbodsborden', titel: 'Verbodsborden', soort: 'borden', families: ['verbod'], vragen: 8,
-    uitleg: 'Verbodsborden zijn rond met een rode rand. Ze zeggen wat níet mag.' },
+  { id: 'voorrangsborden', title: 'Voorrangsborden', kind: 'signs', families: ['priority'], count: 10,
+    explanation: 'Voorrangsborden gelden alleen voor bestuurders onderling.\nRuit: voorrangsweg. Driehoek met de punt omlaag: voorrang verlenen (haaientanden). Achthoek: stop.\nDriehoek met een dikke streep: jij krijgt voorrang op de volgende kruising.' },
 
-  { id: 'rechts', titel: 'Rechts gaat voor', soort: 'kruispunt',
-    situaties: ['rechts-1', 'rechts-2', 'rechts-3', 'rechts-4', 'rechts-5', 'rechts-6'],
-    uitleg: 'Op een kruispunt zonder borden, lichten of haaientanden mag wie van rechts komt eerst.\nKijk voor iedere weggebruiker: komt er iemand van zíjn rechterkant?' },
+  { id: 'haaientanden', title: 'Voorrangskruising', kind: 'crossing', situations: ['yield-1', 'yield-2', 'yield-3', 'yield-4', 'yield-5', 'yield-6'],
+    explanation: 'Bij een voorrangskruising staan voorrangsborden langs de weg en haaientanden op het wegdek.\nHaaientanden of een stopbord? Geef voorrang aan bestuurders van links én rechts.\nBij een stopbord stop je altijd voor de stopstreep.' },
 
-  { id: 'gebod-waarschuwing', titel: 'Moeten en opletten', soort: 'borden', families: ['gebod', 'waarschuwing'], vragen: 8,
-    uitleg: 'Een blauw rond bord zegt wat je móet doen.\nEen driehoek met een rode rand waarschuwt: let op!' },
+  { id: 'afslaan', title: 'Rechtdoor en afslaan', kind: 'crossing', situations: ['turning-1', 'turning-2', 'turning-3', 'turning-4', 'turning-5', 'turning-6'],
+    explanation: 'Dit zijn voorgaanregels, met verkeer op dezelfde weg.\nRechtdoor gaat voor op wie voor je langs wil afslaan.\nSlaan twee dezelfde weg in? Dan gaat de kleine bocht voor de grote bocht.' },
 
-  { id: 'afslaan', titel: 'Rechtdoor en afslaan', soort: 'kruispunt',
-    situaties: ['afslaan-1', 'afslaan-2', 'afslaan-3', 'afslaan-4'],
-    uitleg: 'Rijden ze op dezelfde weg? Dan gaat rechtdoor voor afslaan.\nDe lijn op de weg laat zien waar iedereen heen wil.' },
+  { id: 'zebrapad', title: 'Voetgangers', kind: 'crossing', situations: ['zebra-1', 'zebra-2', 'zebra-3', 'zebra-4', 'zebra-5'],
+    explanation: 'Wil een voetganger bij het zebrapad oversteken? Dan laat je hem voorgaan.\nIs er geen zebrapad of verkeerslicht? Dan ga jij als fietser voor.' },
 
-  { id: 'voorrangsborden', titel: 'Voorrangsborden', soort: 'borden', families: ['voorrang', 'informatie'], vragen: 8,
-    uitleg: 'Voorrangsborden vertellen wie er eerst mag.\nInformatieborden zijn blauw en vierkant.' },
+  { id: 'ambulance', title: 'Zwaailicht en sirene', kind: 'crossing', situations: ['ambulance-1', 'ambulance-2', 'ambulance-3'],
+    explanation: 'Een voertuig met blauwe zwaailichten en een sirene laat je altijd voorgaan, wat de borden ook zeggen.' },
 
-  { id: 'haaientanden', titel: 'Haaientanden en stop', soort: 'kruispunt',
-    situaties: ['haaien-1', 'haaien-2', 'haaien-3', 'haaien-4', 'haaien-5'],
-    uitleg: 'Zie je haaientanden of een stopbord? Dan laat je al het verkeer op de andere weg voorgaan, van links én van rechts.' },
+  { id: 'voorgaan', title: 'Wie gaat voor?', kind: 'quiz', count: 12, questions: ['goFirst-1', 'goFirst-2', 'goFirst-3', 'goFirst-4', 'goFirst-5', 'goFirst-6', 'goFirst-7', 'goFirst-8', 'goFirst-9', 'goFirst-10', 'goFirst-11', 'goFirst-12', 'goFirst-13', 'goFirst-14', 'goFirst-15', 'goFirst-16', 'sign-1', 'sign-4'],
+    explanation: 'Je fietst. Je gaat voor bij: een bus buiten de bebouwde kom, iemand die achteruitrijdt, van een parkeerplaats, uitrit, erf of oprit komt, of uit een onverharde weg komt.\nJe laat voorgaan: een bus binnen de bebouwde kom, zwaailicht met sirene, en voetgangers bij het zebrapad, die slecht lopen of slecht zien.' },
 
-  { id: 'verkeerslichten', titel: 'Verkeerslichten', soort: 'kruispunt',
-    situaties: ['licht-1', 'licht-2', 'licht-3', 'licht-4', 'licht-5'],
-    uitleg: 'Een verkeerslicht gaat voor borden en voor "rechts gaat voor".\nGroen mag je gaan, bij rood wacht je.' },
+  { id: 'fietstocht', title: 'Fietstocht', kind: 'route', route: 'fietstocht',
+    explanation: 'Fiets naar een leuke plek! Bij elke kruising krijg je een vraag. Tik op de weg met het goede antwoord.\nOf je goed zat, merk je pas verderop. Loopt de weg dood? Dan beantwoord je een extra vraag om om te keren.\nOp sommige kruisingen moet je zeggen wie er eerst mag.' },
 
-  { id: 'ambulance', titel: 'De ambulance', soort: 'kruispunt', aan: false,
-    situaties: ['ambu-1', 'ambu-2'],
-    uitleg: 'Een ambulance, brandweer of politie met zwaailicht en sirene mag altijd eerst.' },
+  { id: 'eindtoets', title: 'Eindtoets', kind: 'finalTest', count: 15,
+    explanation: 'Een mix van borden, kruispunten en vragen, net als de echte toets. Succes!' },
 
-  { id: 'eindtoets', titel: 'Eindtoets', soort: 'eindtoets', vragen: 12,
-    uitleg: 'Een mix van borden en kruispunten, net als de echte toets. Succes!' },
+  // ---- Not in this test (set enabled: true to use them) ----
+  { id: 'families', title: 'Bordenfamilies', kind: 'families', count: 8, enabled: false,
+    explanation: 'Aan de vorm en kleur van een bord zie je wat voor bord het is.' },
+  { id: 'verbodsborden', title: 'Verbodsborden', kind: 'signs', families: ['prohibition'], count: 8, enabled: false,
+    explanation: 'Verbodsborden zijn rond met een rode rand. Ze zeggen wat níet mag.' },
+  { id: 'gebod-waarschuwing', title: 'Moeten en opletten', kind: 'signs', families: ['mandatory', 'warning'], count: 8, enabled: false,
+    explanation: 'Een blauw rond bord zegt wat je móet doen. Een driehoek met een rode rand waarschuwt: let op!' },
+  { id: 'verkeerslichten', title: 'Verkeerslichten', kind: 'crossing', enabled: false, situations: ['lights-1', 'lights-2'],
+    explanation: 'Een verkeerslicht gaat voor borden en voor "rechts gaat voor".' },
 ];
 
-/* Tekeningen die het spel kent:
-   verboden-in-te-rijden, gesloten, verboden-fietsers, verboden-autos, verboden-voetgangers,
-   max-30, parkeerverbod, stopverbod, fietspad, voetpad, rechtdoor, rechtsaf,
-   let-op-kruispunt, let-op-kinderen, let-op-verkeerslichten, let-op-zebrapad, let-op-fietsers,
-   haaientanden, stop, voorrangsweg, einde-voorrangsweg, voorrangskruispunt,
-   zebrapad, parkeren, doodlopend, eenrichtingsweg
+/* Drawings the game knows:
+   no-entry, closed, no-bikes, no-cars, no-pedestrians, max-30, no-parking, no-stopping, bike-path, 
+   footpath, ahead-only, turn-right, warn-crossing, warn-children, warn-lights, warn-zebra, 
+   warn-bikes, yield, stop, priority-road, end-priority-road, priority-crossing, 
+   priority-side-left, priority-side-right, zebra, parking, dead-end, one-way
 */
