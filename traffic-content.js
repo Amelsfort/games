@@ -84,6 +84,10 @@ const FAMILIES = {
    roadUsers:
      id:     a short name, used in 'order'
      type:   car | bike | pedestrian | ambulance | bus
+     siren:  (ambulance) false: no blue lights and no siren, so it's an ordinary road user
+   Make sure every two road users in a situation are in each other's way. Two who can pass
+   each other at the same time (say both straight on, from opposite sides) have no right order
+   between them, and a child who picks the other order would be told it's wrong.
      from:   the road it comes from
      turn:   straight | left | right
      color:  (car) red, blue, yellow, green, orange, purple, white
@@ -120,12 +124,12 @@ const SITUATIONS = {
   },
   'right-4': {
     roadUsers: [
-      { id: 'a', type: 'car', color: 'red', from: 'south', turn: 'straight' },
+      { id: 'a', type: 'car', color: 'red', from: 'south', turn: 'left' },
       { id: 'f', type: 'bike', from: 'east', turn: 'straight' },
       { id: 'b', type: 'car', color: 'green', from: 'north', turn: 'straight' },
     ],
     order: ['b', 'f', 'a'],
-    explanation: 'De groene auto heeft niemand rechts van zich, dus die mag eerst. Daarna de fietser, en dan de rode auto.',
+    explanation: 'De groene auto heeft niemand rechts van zich, dus die mag eerst. Daarna de fietser: die had de groene auto van rechts. De rode auto slaat linksaf en wacht op allebei.',
   },
   'right-5': {
     roadUsers: [
@@ -139,10 +143,10 @@ const SITUATIONS = {
     roadUsers: [
       { id: 'a', type: 'car', color: 'purple', from: 'east', turn: 'straight' },
       { id: 'f', type: 'bike', from: 'south', turn: 'straight' },
-      { id: 'b', type: 'car', color: 'blue', from: 'west', turn: 'straight' },
+      { id: 'b', type: 'car', color: 'blue', from: 'west', turn: 'left' },
     ],
     order: ['a', 'f', 'b'],
-    explanation: 'De paarse auto heeft niemand rechts van zich en mag eerst. Daarna de fietser, en als laatste de blauwe auto.',
+    explanation: 'De paarse auto heeft niemand rechts van zich en mag eerst. Daarna de fietser: die had de paarse auto van rechts. De blauwe auto slaat linksaf en gaat als laatste.',
   },
 
   // --- priority crossing: shark teeth, stop and priority road ---
@@ -323,6 +327,42 @@ const SITUATIONS = {
     ],
     order: ['z', 'f'],
     explanation: 'Ook al staan er haaientanden bij de ambulance: met zwaailichten en sirene gaat hij voor.',
+  },
+  // without blue lights and siren an ambulance is an ordinary car: the normal rules apply
+  'ambulance-4': {
+    roadUsers: [
+      { id: 'z', type: 'ambulance', siren: false, from: 'west', turn: 'straight' },
+      { id: 'a', type: 'car', color: 'blue', from: 'south', turn: 'straight' },
+    ],
+    order: ['a', 'z'],
+    explanation: 'De ambulance heeft geen zwaailichten en geen sirene aan. Dan is het een gewone auto. De blauwe auto komt van rechts en gaat voor.',
+  },
+  'ambulance-5': {
+    signs: { west: 'yield', east: 'yield', north: 'priority-road', south: 'priority-road' },
+    roadUsers: [
+      { id: 'z', type: 'ambulance', siren: false, from: 'east', turn: 'straight' },
+      { id: 'f', type: 'bike', from: 'south', turn: 'straight' },
+    ],
+    order: ['f', 'z'],
+    explanation: 'Zonder zwaailichten en sirene moet de ambulance zich gewoon aan de haaientanden houden. De fietser gaat voor.',
+  },
+  'ambulance-6': {
+    roadUsers: [
+      { id: 'z', type: 'ambulance', siren: false, from: 'north', turn: 'left' },
+      { id: 'f', type: 'bike', from: 'south', turn: 'straight' },
+    ],
+    order: ['f', 'z'],
+    explanation: 'De ambulance heeft geen zwaailichten aan en wil voor de fietser langs afslaan. Rechtdoor gaat voor: eerst de fietser.',
+  },
+  // with blue lights and siren the ambulance goes first; after that the normal rules
+  'ambulance-7': {
+    roadUsers: [
+      { id: 'z', type: 'ambulance', from: 'north', turn: 'straight' },
+      { id: 'a', type: 'car', color: 'green', from: 'west', turn: 'left' },
+      { id: 'f', type: 'bike', from: 'east', turn: 'straight' },
+    ],
+    order: ['z', 'f', 'a'],
+    explanation: 'Eerst de ambulance met zwaailichten en sirene. Daarna gelden de gewone regels: de groene auto wil voor de fietser langs afslaan. Rechtdoor gaat voor, dus eerst de fietser.',
   },
 
   // --- traffic lights (not in this test) ---
@@ -658,8 +698,8 @@ const LEVELS = [
   { id: 'zebrapad', title: 'Voetgangers', kind: 'crossing', situations: ['zebra-1', 'zebra-2', 'zebra-3', 'zebra-4', 'zebra-5'],
     explanation: 'Wil een voetganger bij het zebrapad oversteken? Dan laat je hem voorgaan.\nIs er geen zebrapad of verkeerslicht? Dan ga jij als fietser voor.' },
 
-  { id: 'ambulance', title: 'Zwaailicht en sirene', kind: 'crossing', situations: ['ambulance-1', 'ambulance-2', 'ambulance-3'],
-    explanation: 'Een voertuig met blauwe zwaailichten en een sirene laat je altijd voorgaan, wat de borden ook zeggen.' },
+  { id: 'ambulance', title: 'Zwaailicht en sirene', kind: 'crossing', situations: ['ambulance-1', 'ambulance-2', 'ambulance-3', 'ambulance-4', 'ambulance-5', 'ambulance-6', 'ambulance-7'],
+    explanation: 'Een voertuig met blauwe zwaailichten én een sirene laat je altijd voorgaan, wat de borden ook zeggen. Kijk goed: staan de zwaailichten uit? Dan is het een gewone auto en gelden de gewone regels.' },
 
   { id: 'voorgaan', title: 'Wie gaat voor?', kind: 'quiz', count: 12, questions: ['goFirst-1', 'goFirst-2', 'goFirst-3', 'goFirst-4', 'goFirst-5', 'goFirst-6', 'goFirst-7', 'goFirst-8', 'goFirst-9', 'goFirst-10', 'goFirst-11', 'goFirst-12', 'goFirst-13', 'goFirst-14', 'goFirst-15', 'goFirst-16', 'sign-1', 'sign-4'],
     explanation: 'Je fietst. Je gaat voor bij: een bus buiten de bebouwde kom, iemand die achteruitrijdt, van een parkeerplaats, uitrit, erf of oprit komt, of uit een onverharde weg komt.\nJe laat voorgaan: een bus binnen de bebouwde kom, zwaailicht met sirene, en voetgangers bij het zebrapad, die slecht lopen of slecht zien.' },
