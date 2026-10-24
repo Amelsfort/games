@@ -504,8 +504,40 @@ function start() {
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur + 0.05);
   }
+  function glide(f0, f1, t0, dur, type, vol) {   // a tone that slides from f0 to f1
+    if (!actx) return;
+    const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime + t0;
+    o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.03); g.gain.setValueAtTime(vol, t + dur * 0.7); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur + 0.05);
+  }
+  function noise(dur, vol, filter, freq, swell) {   // filtered noise that dies away, or (swell) comes and goes
+    if (!actx) return;
+    const n = actx.sampleRate * dur | 0, buf = actx.createBuffer(1, n, actx.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (swell ? Math.sin(Math.PI * i / n) : Math.pow(1 - i / n, 2));
+    const src = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain();
+    f.type = filter; f.frequency.value = freq; g.gain.value = vol; src.buffer = buf; src.connect(f).connect(g).connect(actx.destination); src.start();
+  }
   function sfx(k) {
     ensureAudio();
+    // playing at a destination
+    if (k === 'step') noise(0.06, 0.12, 'lowpass', 700);
+    if (k === 'yay') [784, 988, 1175].forEach((f, i) => tone(f, i * 0.08, 0.18, 'triangle', 0.14));
+    if (k === 'whee') { glide(500, 1100, 0, 0.3, 'sine', 0.12); glide(1100, 380, 0.3, 0.9, 'sine', 0.12); }
+    if (k === 'whoosh') noise(0.55, 0.3, 'bandpass', 520, true);
+    if (k === 'boing') glide(140, 420, 0, 0.25, 'sine', 0.2);
+    if (k === 'bump') { tone(110, 0, 0.14, 'sine', 0.3); glide(650, 900, 0.03, 0.12, 'triangle', 0.05); }
+    if (k === 'dig') noise(0.14, 0.22, 'highpass', 2200);
+    if (k === 'splash') { noise(0.6, 0.16, 'lowpass', 1400); noise(0.25, 0.08, 'bandpass', 600); }
+    if (k === 'paddle') noise(0.16, 0.045, 'bandpass', 800);
+    if (k === 'swish') noise(0.35, 0.07, 'highpass', 3000, true);
+    if (k === 'spin') glide(300, 1100, 0, 1.6, 'sine', 0.07);
+    if (k === 'crunch') noise(0.15, 0.12, 'lowpass', 900);
+    if (k === 'slurp') { glide(700, 300, 0, 0.3, 'triangle', 0.05); noise(0.2, 0.04, 'bandpass', 1500); }
+    if (k === 'magic') [880, 1175, 1568, 2093].forEach((f, i) => tone(f, i * 0.07, 0.3, 'sine', 0.08));
+    if (k === 'creak') { glide(240, 150, 0, 0.8, 'sawtooth', 0.03); glide(320, 200, 0.1, 0.6, 'sawtooth', 0.02); }
+    if (k === 'boo') { glide(320, 110, 0, 0.9, 'sine', 0.18); glide(330, 115, 0, 0.9, 'triangle', 0.06); }
+    if (k === 'flee') glide(400, 1400, 0, 0.7, 'sine', 0.08);
     if (k === 'click') tone(620, 0, 0.1, 'sine', 0.14);
     if (k === 'tap') tone(760, 0, 0.09, 'triangle', 0.16);
     if (k === 'good') { tone(660, 0, 0.16, 'triangle', 0.2); tone(880, 0.09, 0.16, 'triangle', 0.2); tone(1320, 0.18, 0.28, 'triangle', 0.18); }
@@ -569,6 +601,9 @@ function start() {
   const homeBtn = makeButton(0.2, 0.17, 256, 1); homeBtn.onSelect = () => { sfx('click'); showMap(); }; ui.add(homeBtn.mesh);
   const allBtn = makeButton(0.5, 0.15, 512, 1); ui.add(allBtn.mesh);
   allBtn.onSelect = () => { sfx('click'); try { if (session) session.end(); } catch (e) {} location.href = 'index.html'; };
+  // 'Verder' at a destination: beside the question panel, so it never stands in front of the place
+  const nextBtn = makeButton(0.6, 0.26, 512, 1); nextBtn.mesh.position.set(1.24, -0.32, 0.01); Q.mesh.add(nextBtn.mesh);
+  nextBtn.onSelect = () => { if (phase !== 'crossing' || !cur || cur.k !== 'prize') return; sfx('click'); nextBtn.mesh.visible = false; routeBtns.forEach(o => o.mesh.visible = false); nextItem(); };
   const resBtns = [0, 1, 2].map(i => { const b = makeButton(0.58, 0.24, 640, 1); b.mesh.position.set(-0.62 + i * 0.62, 1.28, Z + 0.06); ui.add(b.mesh); return b; });
 
   // ---------- the toy intersection ----------
@@ -735,7 +770,7 @@ function start() {
 
   function clearSit() {
     while (sit.children.length) { const o = sit.children.pop(); o.traverse(n => [].concat(n.material || []).forEach(m => m.map && m.map.dispose())); }
-    crossRoads.visible = true; setRoads(null); placeAnim = null; sceneUnpaved = new Set(); placeRoot = null; followers = []; closureAnims = [];
+    crossRoads.visible = true; setRoads(null); placeAnim = null; placeActs = []; placeRest = null; placeBlocks = []; play = null; sceneUnpaved = new Set(); placeRoot = null; followers = []; closureAnims = [];
     hiddenScenery.forEach(o => o.visible = true); hiddenScenery = [];
     crashLight.intensity = 0; crashLight.distance = 1.4; crashLight.color.setHex(0xffb040); parts = []; movers = []; crashFx = []; for (const k in lightSets) delete lightSets[k]; lights = null;
   }
@@ -896,10 +931,11 @@ function start() {
       // lights
       const fl = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), new THREE.MeshBasicMaterial({ color: 0xfff6c0 })); fl.position.set(0, 0.68, 0.28); g.add(fl);
       const rl = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.05, 0.03), new THREE.MeshBasicMaterial({ color: 0xff2020 })); rl.position.set(0, 0.5, -0.3); g.add(rl);
-      // rider: legs to pedals, leaning torso, arms to the handlebar
+      // rider: legs to pedals, leaning torso, arms to the handlebar (extra.rider: all of them, to get off at a destination)
+      const rider = extra.rider = [];
       [-1, 1].forEach(sx => {
         const hip = [sx * 0.08, 0.7, -0.1], knee = [sx * 0.1, 0.56, 0.12], foot = [sx * 0.11, 0.3, 0.0];
-        bar(hip, knee, 0.05, pants); bar(knee, foot, 0.042, pants);
+        rider.push(bar(hip, knee, 0.05, pants), bar(knee, foot, 0.042, pants));
         extra.grip = extra.grip || {}; extra.signal = extra.signal || {};
         extra.grip[sx] = bar([sx * 0.15, 1.0, -0.02], [sx * 0.24, 0.76, 0.22], 0.035, shirtM);
         extra.signal[sx] = bar([sx * 0.15, 1.0, -0.02], [sx * 0.6, 1.03, 0.0], 0.035, shirtM); extra.signal[sx].visible = false;   // arm out to show the way
@@ -907,6 +943,7 @@ function start() {
       const bodyM = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.13, 0.4, 10), shirtM); bodyM.position.set(0, 0.88, -0.06); bodyM.rotation.x = 0.35; g.add(bodyM);
       const headM = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 10), skin); headM.position.set(0, 1.18, 0.04); g.add(headM);
       const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), shirtM); helmet.position.set(0, 1.2, 0.04); g.add(helmet);
+      rider.push(bodyM, headM, helmet); extra.shirt = shirt;
       extra.scale = 1.15;
       extra.hitR = 0.8; extra.badgeY = 1.6;
     } else {
@@ -1183,7 +1220,7 @@ function start() {
         p.extra.blink.right.forEach(m => m.material.color.setHex(on && !left ? 0xffa000 : 0x5a3a00));
       }
       // visible must be strictly true/false: three.js draws a mesh whose visible is undefined
-      if (p.extra.signal) [1, -1].forEach(sx => { const out = !!(turning && p.moving && p.u < armInU(p)) && (sx === 1) === left; p.extra.signal[sx].visible = out; p.extra.grip[sx].visible = !out; });
+      if (p.extra.signal) [1, -1].forEach(sx => { const out = !!(turning && p.moving && p.u < armInU(p)) && (sx === 1) === left; p.extra.signal[sx].visible = out; p.extra.grip[sx].visible = !out && !p.offBike; });
       if (p.extra.legs) { const sw = p.moving && p.u < 1 && !p.kb ? Math.sin(t * 9) * 0.45 : 0; p.extra.legs[0].rotation.x = sw; p.extra.legs[1].rotation.x = -sw; }   // walking
       if (p.extra.blue && p.siren !== false) p.extra.blue.forEach((m, i) => m.material.color.setHex(Math.floor(t * 6 + i) % 2 ? 0x2255ff : 0x0a1440));
       p.g.scale.setScalar((p.extra.scale || 1) * (sitMode === 'pick' && p.hover ? 1.15 : 1));
@@ -1367,12 +1404,13 @@ function start() {
     routeMap = { seed, nodes, closed, sand };
     return items;
   }
-  function meTag(p) {
+  function meTag(p) { const s = jijTag(); s.scale.set(0.9, 0.45, 1); s.position.y = p.extra.badgeY + 0.7; p.g.add(s); p.tag = s; }
+  function jijTag() {
     const c = document.createElement('canvas'); c.width = 256; c.height = 128; const x = c.getContext('2d');
     x.fillStyle = '#ffffff'; rr(x, 4, 14, 248, 100, 50); x.fill(); x.fillStyle = C.accent; rr(x, 12, 22, 232, 84, 42); x.fill();
     x.fillStyle = C.startInk; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = `900 64px ${FONT}`; x.fillText('JIJ', 128, 68);
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false }));
-    s.scale.set(0.9, 0.45, 1); s.renderOrder = 10; s.position.y = p.extra.badgeY + 0.7; p.g.add(s);
+    s.renderOrder = 10; return s;
   }
   // u where the path, after the middle of the crossing, is d out from the centre
   function uAtDist(p, d) {
@@ -1444,8 +1482,8 @@ function start() {
     if (cur.k === 'prize' && PLACES[curPrize.place]) {   // the destination itself: ride in and park
       const pl = PLACES[curPrize.place], g = armGroup(from), yaw = g.rotation.y, at = (x, z) => new THREE.Vector3(x, 0, z).applyAxisAngle(UP, yaw);
       setScenery(null); crossRoads.visible = false; groundMat.color.setHex(pl.ground);
-      placeRoot = g; placeFloor = pl.floor || (() => 0.06); followers = [];
-      const park = pl.build(g); sit.add(g);
+      placeRoot = g; placeFloor = pl.floor || (() => 0.06); followers = []; placeActs = []; placeRest = null; placeBlocks = [];
+      const park = pl.build(g); sit.add(g); setupActs(g);
       setPath(me, [new THREE.LineCurve3(at(park[0][0], park[0][1]), at(park[1][0], park[1][1])),
         new THREE.CubicBezierCurve3(...park.slice(1).map(([x, z]) => at(x, z)))]);
       prizeAt = at(park[4][0], park[4][1]); stopU = 1; sitMode = 'toPrize'; startMoving(me, false);
@@ -1575,7 +1613,7 @@ function start() {
     if ((cur.k === 'stop' || cur.k === 'back') && sitMode === 'ask') chooseRoad(b);
     else if (cur.k === 'deadEnd' && sitMode === 'atDeadEnd') { sfx('click'); askExtra(); }
     else if (cur.k === 'deadEnd' && sitMode === 'extraQ') answerExtra(b);
-    else if (cur.k === 'prize' && sitMode === 'atPrize') { sfx('click'); routeBtns.forEach(o => o.mesh.visible = false); nextItem(); }
+    else if (cur.k === 'prize' && sitMode === 'playQ') answerPlay(b);
   }
   function chooseRoad(b) {   // no right or wrong yet: you just ride on
     const fork = cur.k === 'back' ? cur.of : cur, q = cur.q, good = b.answer === q.correct;
@@ -1598,10 +1636,13 @@ function start() {
   function pickExtra() {
     const t = cur.tries === 0 && cur.of.stop.returnQuestion, own = typeof t === 'string' ? QS[t] : t;
     if (validQ(own) && !usedExtra.has(own)) return own;
-    // a knowledge question: one about a traffic situation belongs in a scene where you can see it
+    return knowledgeQ();
+  }
+  // a knowledge question (again: one asked before this ride is fine too): one about a traffic situation belongs in a scene where you can see it
+  function knowledgeQ(again) {
     const lv = [];
     LVLS.forEach(x => { if (x.kind === 'quiz') (x.questions || []).forEach(k => lv.push(k)); });
-    const ok = k => validQ(QS[k]) && !usedExtra.has(QS[k]) && !QS[k].show && !QS[k].situation;
+    const ok = k => validQ(QS[k]) && (again || !usedExtra.has(QS[k])) && !QS[k].show && !QS[k].situation;
     const pool = lv.filter(ok); return QS[shuffle(pool.length ? pool : Object.keys(QS).filter(ok))[0]] || null;
   }
   function askExtra() {
@@ -1764,7 +1805,7 @@ function start() {
   // Built in the frame of the road you come in on: you arrive from +z (local x is your right), the place lies towards -z.
   // build() returns your path: a straight bit (2 points), then a curve (4 points) ending where you park.
   const UP = new THREE.Vector3(0, 1, 0);
-  let placeAnim = null;
+  let placeAnim = null, placeActs = [], placeRest = null, placeBlocks = [];
   function signBoard(text, w, h, bg, ink) {
     const c = document.createElement('canvas'); c.width = 512; c.height = Math.round(512 * h / w); const x = c.getContext('2d');
     x.fillStyle = bg; rr(x, 0, 0, c.width, c.height, 24); x.fill();
@@ -1800,6 +1841,15 @@ function start() {
     };
     fence(-7.6, 0.2, -0.8, 0.2); fence(0.8, 0.2, 7.6, 0.2); fence(-7.6, 0.2, -7.6, -7.6); fence(7.6, 0.2, 7.6, -7.6); fence(-7.6, -7.6, 7.6, -7.6);
     return [[0.86, 7.6], [0.86, 4.0], [0.86, 2.9], [2.4, 2.9], [2.4, 1.6]];   // ride in on the right, swing into the rack
+  }
+  // a bench to sit on when you've had a go, facing the entrance (or, away, the back); it's in the way when you walk, and
+  // returns the place's resting spot
+  function bench(g, x, z, away, col) {
+    const s = away ? -1 : 1, wood = col || 0x8d5a3b, grey = lam(0x9aa0a8);
+    soft(g, 1.0, 0.06, 0.36, wood, x, z, 0.3, 0.02); soft(g, 1.0, 0.28, 0.06, wood, x, z - s * 0.19, 0.4, 0.02); blob(g, x, z, 1.1, 0.5, 'square');
+    [[-0.42, -0.14], [0.42, -0.14], [-0.42, 0.14], [0.42, 0.14]].forEach(([dx, dz]) => rod(g, [x + dx, 0, z + dz], [x + dx, 0.3, z + dz], 0.025, grey));
+    placeBlocks.push([x - 0.5, z - 0.22, x + 0.5, z + 0.22]);
+    return { at: [x, z + s * 0.4], seat: [x, z + s * 0.05, 0.36, away ? Math.PI : 0] };
   }
   function person(g, x, z, shirt, scale, swim) {   // a figure standing in a scene
     const p = figure(new THREE.Group(), shirt, scale || 1, null, swim);
@@ -1845,7 +1895,7 @@ function start() {
       };
       // splashes where someone lands in the water
       const splashes = [];
-      const splashAt = (x, z) => { for (let j = 0; j < 7; j++) { const m = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true })); g.add(m); splashes.push({ m, x, z, a: j / 7 * Math.PI * 2, age: 0 }); } };
+      const splashAt = (x, z, loud) => { if (loud) sfx('splash'); for (let j = 0; j < 7; j++) { const m = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true })); g.add(m); splashes.push({ m, x, z, a: j / 7 * Math.PI * 2, age: 0 }); } };
       // the diving board, in its own lane: walk to the end, bounce, dive in, swim to the ladder, climb out, walk back round
       soft(g, 0.7, 0.6, 0.7, 0x9aa0a8, 3.0, -6.75, 0, 0.08); blob(g, 3.0, -6.75, 0.7, 0.7, 'square', 0.062);
       const board = new THREE.Group(); board.position.set(3.0, 0.6, -6.8); g.add(board); soft(board, 0.5, 0.08, 1.7, 0x1e88e5, 0, 0.85, 0, 0.03);   // it flexes at the base
@@ -1858,12 +1908,14 @@ function start() {
       // the board's top at z (it dips when it flexes)
       const boardY = z => 0.68 - Math.sin(board.rotation.x) * (z + 6.8);
       const C = 0.34;   // from the feet to the middle of the body: the dive turns around that point
-      let dived = false;
+      let dived = false, diveBounce = 1;
       const diverStep = t => {
         const s = along(DIVE, t);
         board.rotation.x = 0;
         if (s.what === 'bounce') {   // two bounces: the board dips and the diver crouches when they land, then springs up
           const ph = s.k * 2 % 1, air = Math.sin(ph * Math.PI), low = Math.pow(1 - air, 3);
+          if (ph < diveBounce && mine(placeActs[1])) sfx('boing');   // each time the board throws you up
+          diveBounce = ph;
           board.rotation.x = 0.07 * low;
           pose(diver, Object.assign({}, s, { what: 'stand' }), t, 0);
           diver.position.y = boardY(s.z) + air * 0.32; diver.scale.y = 1 - 0.12 * low;
@@ -1877,7 +1929,7 @@ function start() {
           diver.rotation.set(th, 0, 0); diver.scale.y = 1;
           diver.position.set(3.0, comY - C * Math.cos(th), comZ - C * Math.sin(th));
           diver.userData.legs.forEach(l => l.rotation.x = 0);
-          if (k > 0.93 && !dived) { dived = true; splashAt(3.0, comZ); }
+          if (k > 0.93 && !dived) { dived = true; splashAt(3.0, comZ, mine(placeActs[1])); }
         } else { pose(diver, s, t); if (s.what === 'stand') dived = false; }
       };
       // the water slide: a tower with a ladder at the back and one smooth, open chute winding down into the pool
@@ -1919,19 +1971,19 @@ function start() {
           const u = Math.pow(s.k, 1.4), q = floor(u), T = slide.getTangentAt(u);
           slider.position.set(q.x, q.y + 0.03 - hip, q.z); slider.rotation.y = Math.atan2(T.x, T.z); slider.rotation.x = 0;
           slider.userData.legs.forEach(l => l.rotation.x = -1.45);
-          if (s.k > 0.95 && !splashed) { splashed = true; const e = slide.getPointAt(1); splashAt(e.x + 0.3, e.z); }
+          if (s.k > 0.95 && !splashed) { splashed = true; const e = slide.getPointAt(1); splashAt(e.x + 0.3, e.z, mine(placeActs[0])); }
         } else if (s.what === 'sit') { pose(slider, Object.assign({}, s, { what: 'stand' }), t, 0); slider.position.y = TOP + 0.02 - hip * s.k; slider.userData.legs.forEach(l => l.rotation.x = -1.45 * s.k); splashed = false; }
         else pose(slider, s, t);
       };
       // swimmers doing lengths in lanes -1 and 1: just under the surface, arms going round, legs kicking
       const swimmers = [[-1.0, 0xe91e63, 0x1e88e5, 0.8], [1.0, 0xffc107, 0xe53935, 0.6]].map(([x, cap, trunks, speed], i) => {
-        const w = new THREE.Group(), skin = lam(0xf2c9a0); g.add(w);
-        soft(w, 0.26, 0.14, 0.55, skin, 0, 0, -0.02, 0.07); soft(w, 0.27, 0.15, 0.16, trunks, 0, -0.2, -0.025, 0.06);
+        const w = new THREE.Group(), skin = lam(0xf2c9a0), trunksM = lam(trunks), capM = lam(cap); g.add(w);
+        soft(w, 0.26, 0.14, 0.55, skin, 0, 0, -0.02, 0.07); soft(w, 0.27, 0.15, 0.16, trunksM, 0, -0.2, -0.025, 0.06);
         const head = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 10), skin); head.position.set(0, 0.1, 0.36); w.add(head);
-        const c = new THREE.Mesh(new THREE.SphereGeometry(0.115, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), lam(cap)); c.position.set(0, 0.11, 0.35); c.rotation.x = 0.5; w.add(c);
+        const c = new THREE.Mesh(new THREE.SphereGeometry(0.115, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), capM); c.position.set(0, 0.11, 0.35); c.rotation.x = 0.5; w.add(c);
         const arms = [-1, 1].map(sx => { const sh = new THREE.Group(); sh.position.set(sx * 0.16, 0.06, 0.2); w.add(sh); rod(sh, [0, 0, 0], [0, 0, 0.36], 0.035, skin); return sh; });
         const legs = [-1, 1].map(sx => { const hp = new THREE.Group(); hp.position.set(sx * 0.07, 0, -0.26); w.add(hp); rod(hp, [0, 0, 0], [0, 0, -0.4], 0.04, skin); return hp; });
-        return { w, x, speed, arms, legs, ph: i * 2.3 };
+        return { w, x, speed, arms, legs, ph: i * 2.3, trunksM, capM, cap, trunks };
       });
       // around the pool: a kid on the edge with their feet in the water, the lifeguard on a high chair
       const edge = sitDown(person(g, -1.8, -1.12, 0xab47bc, 0.7, true), 0.1); edge.rotation.y = Math.PI;
@@ -1951,18 +2003,61 @@ function start() {
         const um = new THREE.Mesh(new THREE.ConeGeometry(0.9, 0.4, 16), lam([0xe53935, 0x43a047, 0xfb8c00][i])); um.position.set(7.0, 1.7, z); g.add(um);
       });
       const ring = new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.12, 10, 20), lam(0xff5252)); ring.rotation.x = Math.PI / 2; ring.position.set(0.0, 0.12, -2.0); g.add(ring);
+      // what you can go and do: take over the water slide, the diving board or a lane, or float around in the ring
+      const offs = { slide: 0, dive: 0 }, LAP = 2 * 3.6;
+      let ringKid = null, ringT0 = 0;
+      placeRest = { at: [5.6, -2.5], seat: [6.2, -2.5, 0.31, Math.PI] };   // on the front sun lounger, with your back to the backrest
+      // what you walk around: the water, the slide tower and the low end of the chute (higher up you walk under it), its poles,
+      // the ladders, the diving block, the lifeguard's chair, the loungers and the kid on the edge
+      placeBlocks = [[-4.2, -6.25, 4.2, -1.15], [-6.15, -7.0, -5.05, -5.25], [-4.35, -4.05, -4.0, -3.55], [4.0, -5.65, 4.35, -5.15], [2.6, -7.45, 3.4, -6.4],
+        [4.45, -3.8, 5.05, -3.2], ...[-2.4, -4.2, -6.0].map(z => [5.85, z - 0.7, 6.55, z + 0.75]), [-1.8, -1.0, 0.25]];
+      for (let u = 0; u <= 1; u += 0.04) { const P = slide.getPointAt(u); if (P.y < 1.3) placeBlocks.push([P.x, P.z, 0.35]); }
+      [0.3, 0.55, 0.8].forEach(u => { const q = floor(u); placeBlocks.push([q.x, q.z, 0.08]); });
+      placeActs = [
+        { label: 'Glijbaan', emoji: '🌊', badge: [TX, 3.6, -5.8], hit: [-4.6, -4.4, 3.0, 5.0, 3.2], at: [-4.45, -3.8], swim: true, dur: 9.2,
+          hide() { slider.visible = false; },
+          start(t, shirt) { dressAs(slider, shirt, 0.75, true); offs.slide = 5.0 - t % 9.2 + 9.2; slider.visible = true; return [slider, 1.15]; },   // from beside the ladder: round, up, down and out again
+          stop() { dressAs(slider, 0x00bcd4, 0.75, true); slider.visible = true; } },
+        { label: 'Duiken', emoji: '🤿', badge: [3.0, 2.1, -6.6], hit: [3.2, -6.4, 2.0, 2.8, 1.8], at: [4.45, -5.4], swim: true, dur: 9.4,
+          hide() { diver.visible = false; },
+          start(t, shirt) { dressAs(diver, shirt, 0.75, true); offs.dive = 6.6 - t % 9.4 + 9.4; diver.visible = true; return [diver, 1.15]; },   // walking round to the board
+          stop() { dressAs(diver, 0xff7043, 0.75, true); diver.visible = true; } },
+        { label: 'Zwemmen', emoji: '🏊', badge: [-1.0, 1.5, -4.4], hit: [0, -4.6, 4.0, 2.9, 0.6], at: [-1.0, -1.05], hop: () => [-1.0, -1.95], swim: true, dur: LAP / 0.8,   // one length there and back
+          hide() { swimmers[0].w.visible = false; },
+          start(t, shirt) {   // in you go, at the near end of the lane
+            const s = swimmers[0]; s.ph = LAP / s.speed - t % (LAP / s.speed); s.w.visible = true;
+            s.trunksM.color.setHex(shirt); s.capM.color.setHex(shirt); splashAt(-1.0, -1.95, true); return [s.w, 0.75];
+          },
+          stop() { const s = swimmers[0]; s.trunksM.color.setHex(s.trunks); s.capM.color.setHex(s.cap); s.w.visible = true; } },
+        { label: 'Zwemband', emoji: '🛟', badge: [0.0, 1.3, -2.0], hit: [0, -2.1, 1.4, 1.4, 0.8], at: [0.0, -1.05], hop: () => [ring.position.x, ring.position.z], swim: true, dur: Math.PI * 2 / 0.5,   // one round, back to the edge
+          hide() { if (ringKid) ringKid.visible = false; },
+          start(t, shirt) {   // a jump into the ring, and float around in it
+            if (!ringKid) ringKid = person(g, 0, -2.0, shirt, 0.7, true); else dressAs(ringKid, shirt, 0.7, true);
+            sitDown(ringKid, 0.1).visible = true; ringT0 = t; splashAt(ring.position.x, ring.position.z, true); return [ringKid, 1.0];
+          },
+          stop() {} },
+      ];
       let last = 0;
       placeAnim = { t: 0, step(t) {
         const dt = Math.max(0, Math.min(0.1, t - last)); last = t;
         tex.offset.set(Math.sin(t * 0.4) * 0.03, t * 0.03);
         ring.position.y = 0.12 + Math.sin(t * 2.2) * 0.04;
+        if (ringKid && ringKid.visible) {   // drifting slowly between the lanes, turning round
+          const u = t - ringT0;
+          ring.position.x = Math.sin(u * 0.5) * 0.25; ring.position.z = -2.0 - (1 - Math.cos(u * 0.5)) * 0.45;
+          ringKid.position.set(ring.position.x, ring.position.y - 0.02 - ringKid.userData.hip, ring.position.z); ringKid.rotation.y = u * 0.25;
+        }
         swimmers.forEach(s => {   // up and down their lane, turning at each end
           const L = 3.6, d = ((t + s.ph) * s.speed) % (2 * L), back = d > L, z = -1.95 - (back ? 2 * L - d : d);
           s.w.position.set(s.x, WATER - 0.02 + Math.sin(t * 4 + s.ph) * 0.015, z); s.w.rotation.y = back ? 0 : Math.PI;
           s.arms.forEach((a, j) => a.rotation.x = t * 4 + s.ph + j * Math.PI);   // front crawl: reach forward, pull down and back under water, over the top
           s.legs.forEach((l, j) => l.rotation.x = Math.sin(t * 10 + j * Math.PI) * 0.3);
         });
-        diverStep(t); sliderStep(t);
+        diverStep(t + offs.dive); sliderStep(t + offs.slide);
+        const [aSlide, , aSwim, aRing] = placeActs;
+        if (mine(aSlide) && dt && passed(t + offs.slide, dt, 9.2, 0)) sfx('whee');
+        if (mine(aSwim) && dt && passed(t + swimmers[0].ph, dt, Math.PI / 2, 0)) sfx('paddle');   // every other stroke
+        if (mine(aRing) && dt && passed(t, dt, 2.7, ringT0)) sfx('paddle');   // the water lapping against the ring
         lifeguard.rotation.y = -Math.PI / 2 + Math.sin(t * 0.4) * 0.6;   // looking out over the pool, from one end to the other
         for (let i = splashes.length - 1; i >= 0; i--) {   // the drops fly out and fall back
           const sp = splashes[i]; sp.age += dt; const k = sp.age / 0.8;
@@ -2002,7 +2097,7 @@ function start() {
       for (let i = 0; i < 7; i++) { let px = Math.random() * W, py = Math.random() * H; ix.beginPath(); ix.moveTo(px, py); for (let j = 0; j < 5; j++) { px += (Math.random() - 0.5) * 40; py += (Math.random() - 0.5) * 40; ix.lineTo(px, py); } ix.stroke(); }
       const iceTop = new THREE.MeshPhongMaterial({ map: new THREE.CanvasTexture(ic), color: 0xffffff, specular: 0xbfdcff, shininess: 80 }), iceSide = lam(0xbfe3f5);
       box(g, 9.0, 0.14, 5.5, [iceSide, iceSide, iceTop, iceSide, iceSide, iceSide], 0, -3.9);
-      [[0, -1.15, 9.4], [0, -6.65, 9.4]].forEach(([x, z, w]) => box(g, w, 0.35, 0.1, 0xe53935, x, z));
+      [[-1.05, -1.15, 7.3], [4.05, -1.15, 1.3], [0, -6.65, 9.4]].forEach(([x, z, w]) => box(g, w, 0.35, 0.1, 0xe53935, x, z));   // a gap on the right at the front, to get onto the ice
       [[-4.7, -3.9], [4.7, -3.9]].forEach(([x, z]) => box(g, 0.1, 0.35, 5.6, 0xe53935, x, z));
       // a christmas tree at the back right, strings of lights along the sides
       const tr = new THREE.Group(); tr.position.set(6.3, 0, -6.3); g.add(tr); tree(tr, 0, 0, 1.25, true);
@@ -2028,8 +2123,54 @@ function start() {
           wobble: t => Math.sin(t * 7) * 0.12 + Math.sin(t * 2.3) * 0.08 },
       ];
       SKATERS.forEach(k => { k.p = person(g, 0, CZ, k.shirt); box(k.p, 0.24, 0.06, 0.24, 0xe53935, 0, 0, 0.74); k.p.rotation.order = 'YXZ'; });
+      // a hot chocolate stall on the right, its counter towards the rink, someone behind it
+      const ST = [6.6, -3.5];
+      soft(g, 0.7, 0.9, 1.4, 0x8d5a3b, ST[0], ST[1], 0, 0.04); blob(g, ST[0], ST[1], 1.0, 1.7, 'square'); box(g, 0.8, 0.05, 1.5, 0xf5f5f5, ST[0], ST[1], 0.9);
+      [[-0.4, -0.7], [-0.4, 0.7], [0.55, -0.7], [0.55, 0.7]].forEach(([dx, dz]) => rod(g, [ST[0] + dx, 0.9, ST[1] + dz], [ST[0] + dx, 1.75, ST[1] + dz], 0.03, lam(0xf5f5f5)));
+      soft(g, 1.2, 0.08, 1.7, 0xe53935, ST[0] + 0.07, ST[1], 1.75, 0.03);
+      const choc = signBoard('CHOCOMEL', 1.3, 0.3, '#5d4037', '#ffffff'); choc.position.set(ST[0] - 0.42, 1.55, ST[1]); choc.rotation.y = -Math.PI / 2; g.add(choc);
+      const mugGeo = new THREE.CylinderGeometry(0.06, 0.05, 0.1, 10), mug = () => { const m = new THREE.Mesh(mugGeo, lam(0xffffff)); const c = new THREE.Mesh(new THREE.CircleGeometry(0.05, 10), lam(0x5d4037)); c.rotation.x = -Math.PI / 2; c.position.y = 0.051; m.add(c); return m; };
+      [-0.4, 0.35].forEach(dz => { const m = mug(); m.position.set(ST[0] - 0.2, 0.98, ST[1] + dz); g.add(m); });
+      const vendor = person(g, ST[0] + 0.6, ST[1], 0xffffff); vendor.rotation.y = -Math.PI / 2;
+      // a free spot on the snow on the left, for a snowman
+      const SN = [-6.0, -3.6], snowman = new THREE.Group(); snowman.position.set(SN[0], 0, SN[1]); g.add(snowman);
+      const snow = lam(0xffffff), balls = [[0.3, 0.28], [0.22, 0.72], [0.15, 1.04]].map(([r, y]) => { const b = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 12), snow); b.position.y = y; b.scale.setScalar(0.001); snowman.add(b); return b; });
+      [-0.05, 0.05].forEach(x => { const e = new THREE.Mesh(new THREE.SphereGeometry(0.022, 6, 6), lam(0x111111)); e.position.set(x, 0.04, 0.13); balls[2].add(e); });
+      const nose = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.14, 8), lam(0xff7043)); nose.rotation.x = Math.PI / 2; nose.position.set(0, 0, 0.18); balls[2].add(nose);
+      [-1, 1].forEach(sx => rod(balls[1], [sx * 0.18, 0, 0], [sx * 0.42, 0.2, 0], 0.015, lam(0x5d4037)));   // stick arms
+      const snowShadow = blob(g, SN[0], SN[1], 0.9, 0.9); snowShadow.visible = false;
+      // what you walk around: the boards (but for the gap), the tree, the lamp posts, the stall, the snowman
+      placeBlocks = [[-4.75, -1.2, 2.6, -1.1], [3.4, -1.2, 4.75, -1.1], [-4.75, -6.7, 4.75, -6.6], [-4.75, -6.7, -4.65, -1.1], [4.65, -6.7, 4.75, -1.1],
+        [6.3, -6.3, 0.9], [-6.6, -1.2, 0.1], [6.6, -1.2, 0.1], [-6.6, -6.8, 0.1], [6.6, -6.8, 0.1], [6.2, -4.35, 7.5, -2.65], [SN[0], SN[1], 0.35]];
+      placeRest = bench(g, -2.5, -0.35, true);   // in front of the rink, watching the skaters
+      // skating one round on the ice, a pirouette in the middle, building a snowman, a mug of hot chocolate
+      const SK = a => [2.85 * Math.cos(a), CZ + 1.45 * Math.sin(a)], SK0 = 0.6, SPIN = [0.6, -2.8];
+      const ice = (kid, shirt) => { box(kid, 0.2, 0.05, 0.2, 0xe53935, 0, 0, 0.59); kid.rotation.order = 'YXZ'; return kid; };   // a scarf, and leaning into the turns
+      let skateKid = null, skateT0 = 0, spinKid = null, spinT0 = 0, snowKid = null, snowT0 = 0, drinkKid = null, drinkT0 = 0, myMug = null;
+      const fresh = (kid, x, z, shirt) => { if (!kid) kid = person(g, x, z, shirt, 0.8); else dressAs(kid, shirt, 0.8); kid.position.set(x, placeFloor(x, z), z); kid.rotation.set(0, 0, 0); kid.visible = true; return kid; };
+      const aSkate = { label: 'Schaatsen', emoji: '⛸️', badge: [-1.5, 1.4, -4.4], hit: [0, -3.9, 9.2, 5.4, 0.5], at: SK(SK0), dur: Math.PI * 2 / 0.5,   // one round
+        hide() { if (skateKid) skateKid.visible = false; },
+        start(t, shirt) { skateKid = ice(fresh(skateKid, ...SK(SK0), shirt)); skateT0 = t; return [skateKid, 1.05]; }, stop() {} };
+      const aSpin = { label: 'Pirouette', emoji: '💫', badge: [SPIN[0], 1.8, SPIN[1]], hit: [SPIN[0], SPIN[1], 1.2, 1.2, 1.4], at: SPIN, dur: 5,
+        hide() { if (spinKid) spinKid.visible = false; },
+        start(t, shirt) { spinKid = ice(fresh(spinKid, ...SPIN, shirt)); spinT0 = t; sfx('spin'); return [spinKid, 1.05]; }, stop() {} };
+      const aSnow = { label: 'Sneeuwpop maken', emoji: '⛄', badge: [SN[0], 1.7, SN[1]], hit: [SN[0], SN[1], 1.4, 1.4, 1.5], at: [SN[0] + 0.65, SN[1]], dur: 9,
+        hide() { if (snowKid) snowKid.visible = false; },
+        start(t, shirt) {   // a new one: the balls are rolled one by one
+          snowKid = fresh(snowKid, SN[0] + 0.65, SN[1], shirt); snowKid.rotation.order = 'YXZ'; snowKid.rotation.y = -Math.PI / 2; snowT0 = t;
+          balls.forEach(b => b.scale.setScalar(0.001)); return [snowKid, 1.05];
+        }, stop() {} };
+      const aDrink = { label: 'Chocomel', emoji: '☕', badge: [ST[0], 2.4, ST[1]], hit: [ST[0], ST[1], 1.6, 1.9, 2.2], at: [ST[0] - 1.05, ST[1]], dur: 7.5,
+        hide() { if (drinkKid) drinkKid.visible = false; },
+        start(t, shirt) {   // the mug comes over the counter, and you take a few sips
+          drinkKid = fresh(drinkKid, ST[0] - 1.05, ST[1], shirt); drinkKid.rotation.y = Math.PI / 2; drinkT0 = t;
+          myMug = mug(); myMug.visible = false; drinkKid.add(myMug); return [drinkKid, 1.05];
+        }, stop() {} };
+      placeActs = [aSkate, aSpin, aSnow, aDrink];
       const heading = (k, t) => { const [x0, z0] = k.pos(t), [x1, z1] = k.pos(t + 0.05); return Math.hypot(x1 - x0, z1 - z0) < 1e-4 ? null : Math.atan2(x1 - x0, z1 - z0); };
+      let last = 0;
       placeAnim = { t: 0, step(t) {
+        const dt = Math.max(0, Math.min(0.1, t - last)); last = t;
         SKATERS.forEach(k => {
           const [x, z] = k.pos(t), h = heading(k, t), h2 = heading(k, t + 0.15);
           k.p.position.set(x, 0.14, z);
@@ -2041,10 +2182,37 @@ function start() {
           k.p.position.y = 0.14 + fall * 0.05;
         });
         bulbs.forEach((b, i) => b.material.color.setHex([0xff5252, 0xffd740, 0x69f0ae, 0x40c4ff][(i + Math.floor(t * 2)) % 4]));
+        if (skateKid && skateKid.visible) {   // one round, five strokes, leaning into the turn like the others
+          const D = aSkate.dur, u = t - skateT0, ang = v => SK0 + Math.PI * 2 * v / D + 0.06 * Math.sin(Math.PI * 2 * 5 * v / D);
+          const [x, z] = SK(ang(u)), [x1, z1] = SK(ang(u + 0.05)), [x2, z2] = SK(ang(u + 0.2)), h = Math.atan2(x1 - x, z1 - z), h2 = Math.atan2(x2 - x1, z2 - z1);
+          skateKid.position.set(x, 0.14, z); skateKid.rotation.y = h; skateKid.rotation.z = Math.max(-0.35, Math.min(0.35, -Math.atan2(Math.sin(h2 - h), Math.cos(h2 - h)) * 2.5));
+          const sw = Math.sin(Math.PI * 2 * 5 * u / D) * 0.3; skateKid.userData.legs[0].rotation.x = sw; skateKid.userData.legs[1].rotation.x = -sw;
+          if (dt && passed(u, dt, D / 5, 0)) sfx('swish');
+        }
+        if (spinKid && spinKid.visible) {   // faster and faster, six times round, and slowing down again
+          const k = Math.min(1, (t - spinT0) / aSpin.dur);
+          spinKid.rotation.y = Math.PI * 2 * 6 * (k - Math.sin(Math.PI * 2 * k) / (Math.PI * 2));
+        }
+        if (snowKid && snowKid.visible) {   // rolling the balls one by one, bending down, then the head with its face
+          const u = t - snowT0;
+          balls.forEach((b, i) => { const k = Math.max(0, Math.min(1, (u - 0.5 - i * 2.6) / 2)); b.scale.setScalar(Math.max(0.001, ease(k))); });
+          snowShadow.visible = true;
+          snowKid.rotation.x = u < 8 ? Math.max(0, Math.sin(u * 3)) * 0.35 : 0;
+          if (dt && u < 8 && passed(u, dt, 0.7, 0.5)) sfx('crunch');
+          if (dt && passed(u, dt, 100, 8.2)) sfx('magic');
+        }
+        if (drinkKid && drinkKid.visible && myMug) {   // the mug at your hand, up to your mouth for a sip every two seconds
+          const u = t - drinkT0, sip = u > 2 ? Math.max(0, Math.sin((u - 2) * Math.PI)) : 0;   // up in the first second of every two
+          myMug.visible = u > 1;
+          myMug.position.set(0.12 - sip * 0.1, 0.38 + sip * 0.26, 0.12 + sip * 0.02);
+          if (dt && u > 2 && passed(u, dt, 2, 2.3)) sfx('slurp');
+        }
       } };
       return path;
     } },
-    hauntedHouse: { ground: 0x3b4a2a, floor: (x, z) => floorOr(x, z), build(g) {
+    hauntedHouse: { ground: 0x3b4a2a,
+      floor: (x, z) => floorOr(x, z, Math.abs(x) < 1.6 && z < -2.95 && z > -3.7 ? 0.2 : Math.abs(x) < 0.6 && z < -2.57 && z > -2.95 ? 0.16 : Math.abs(x) < 0.5 && z < -2.37 && z > -2.57 ? 0.1 : undefined),   // the porch and its steps
+      build(g) {
       const path = entrance(g, { wall: 0x4a3b5c, band: 0xfb8c00, roof: 0x2b2533, square: 0x8a8578, fence: 0x2b2b2b, sign: 'SPOOKHUIS', signBg: '#1b1b1b', signInk: '#ff9800' });
       // The house at the back, like a decaying Victorian mansion: two floors with tall narrow windows, a steep slate roof
       // with iron cresting, a front gable over the porch, a corner tower with a spire and a weather vane.
@@ -2084,7 +2252,9 @@ function start() {
       [-1.45, -0.5, 0.5, 1.45].forEach(x => rod(g, [x, 0.2, -3.05], [x, 1.45, -3.05], 0.05, lam(trim)));
       const porchRoof = soft(g, 3.4, 0.07, 0.75, slate, 0, -3.35, 1.45, 0.03); porchRoof.rotation.x = 0.1;   // between the floors, under the first-floor windows
       [[-2.82, 0.12], [-2.62, 0.06]].forEach(([z, h], i) => soft(g, 1.2 - i * 0.2, h + 0.04, 0.22, 0x6d625c, 0, z + 0.14, 0, 0.02));   // steps
-      [-0.19, 0.19].forEach(x => box(g, 0.36, 0.9, 0.04, 0x2b1d1a, x, -3.68, 0.2));
+      // the double door, hinged at the sides so it can swing open onto the porch, darkness behind it
+      box(g, 0.74, 0.9, 0.01, 0x0a0a10, 0, -3.695, 0.2);
+      const doors = [-1, 1].map(sd => { const d = new THREE.Group(); d.position.set(sd * 0.37, 0.2, -3.68); g.add(d); box(d, 0.36, 0.9, 0.04, 0x2b1d1a, -sd * 0.18, 0); d.userData.sd = sd; return d; });
       const fan = new THREE.Mesh(new THREE.CircleGeometry(0.3, 16, 0, Math.PI), glow()); fan.position.set(0, 1.12, -3.67); g.add(fan); lit.push(fan);   // above the door, under the porch roof
       // a wrought-iron fence along the front with an open gate, spikes on top
       [[-3.3, -0.6], [0.6, 3.3]].forEach(([x1, x2]) => {
@@ -2145,7 +2315,8 @@ function start() {
       fx.beginPath(); fx.moveTo(16, 60); fx.quadraticCurveTo(64, 98, 112, 60); fx.quadraticCurveTo(64, 76, 16, 60); fx.fill();   // grin…
       fx.globalCompositeOperation = 'destination-out'; [44, 64, 84].forEach(tx => fx.fillRect(tx - 5, 64, 10, 9));   // …with teeth
       const faceTex = new THREE.CanvasTexture(fc), orange = lam(0xfb8c00);
-      [[3.6, -2.0, 1], [5.0, -2.6, 0.85], [4.2, -3.6, 1.1], [6.2, -2.0, 0.8], [5.8, -4.4, 0.95], [-2.5, -2.2, 1], [2.5, -2.4, 0.9]].forEach(([x, z, k]) => {
+      const PUMPKINS = [[3.6, -2.0, 1], [5.0, -2.6, 0.85], [4.2, -3.6, 1.1], [6.2, -2.0, 0.8], [5.8, -4.4, 0.95], [-2.5, -2.2, 1], [2.5, -2.4, 0.9]];
+      const pumpkin = (x, z, k) => {
         const p = new THREE.Group(); p.position.set(x, 0, z); p.scale.setScalar(k); g.add(p);
         const core = new THREE.Mesh(new THREE.SphereGeometry(0.34, 16, 12), orange); core.scale.y = 0.72; core.position.y = 0.26; p.add(core);
         for (let i = 0; i < 8; i++) {   // the lobes
@@ -2155,10 +2326,11 @@ function start() {
         // the face: a piece of a sphere just outside the pumpkin, at the front
         const face = new THREE.Mesh(new THREE.SphereGeometry(0.405, 16, 12, Math.PI / 2 - 0.62, 1.24, Math.PI / 2 - 0.5, 1.0),
           new THREE.MeshBasicMaterial({ map: faceTex, transparent: true, color: 0xffee58, depthWrite: false }));
-        face.scale.y = 0.72; face.position.y = 0.26; p.add(face); pumpkins.push(face);
+        face.scale.y = 0.72; face.position.y = 0.26; p.add(face);
         const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.05, 0.16, 8), lam(0x3a6b2a)); stem.position.y = 0.58; stem.rotation.z = 0.2; p.add(stem);
-        blob(p, 0, 0, 0.8, 0.8);
-      });
+        blob(p, 0, 0, 0.8, 0.8); return face;
+      };
+      PUMPKINS.forEach(([x, z, k]) => pumpkins.push(pumpkin(x, z, k)));
       // bats circling the house and a ghost floating by
       const bats = [0, 1, 2, 3].map(() => { const b = new THREE.Group(); [-1, 1].forEach(sx => { const w = box(b, 0.4, 0.03, 0.2, 0x111111, sx * 0.2, 0); w.userData.sx = sx; }); box(b, 0.12, 0.12, 0.12, 0x111111, 0, 0); g.add(b); return b; });
       const ghost = new THREE.Group(), gm = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 });
@@ -2188,14 +2360,72 @@ function start() {
         zigzag(x, y, end, 0.035, true);
         strikeAt = t; thundered = false; nextStrike = t + 6 + Math.random() * 6;
       };
+      // one more pumpkin by the gate, not lit yet: you can light it
+      const PK = [3.0, -1.45], myPumpkin = pumpkin(PK[0], PK[1], 0.9); myPumpkin.material.color.setHex(0x2a2418);
+      // what you walk around: the house, the bay and the tower, the porch columns, the iron fence and its open gate, the graves,
+      // the pumpkins, the dead trees
+      placeBlocks = [[-2.25, -6.75, 2.25, -4.15], [-0.85, -4.25, 0.85, -3.72], [1.7, -4.9, 2.9, -3.7], ...[-1.45, -0.5, 0.5, 1.45].map(x => [x, -3.05, 0.06]),
+        [-3.35, -2.8, -0.62, -2.7], [0.62, -2.8, 3.35, -2.7], [-0.45, -2.5, 0.07], [0.45, -2.5, 0.07], [-0.33, -2.26, 0.07], [0.33, -2.26, 0.07],
+        ...[[-5.5, -2.0], [-4.3, -2.6], [-6.2, -3.4], [-5.0, -4.6], [-6.0, -6.0]].map(([x, z]) => [x, z, 0.35]), ...PUMPKINS.map(([x, z, k]) => [x, z, 0.33 * k]),
+        [PK[0], PK[1], 0.3], [-3.5, -6.4, 0.3], [4.4, -6.0, 0.3]];
+      placeRest = bench(g, -1.8, -1.0, false, 0x3b3029);
+      // going in (the doors creak open, the windows flash, boo!, and you come running out), giving the ghost a fright, lighting a pumpkin
+      const DOOR = [0, -3.25], SC = [-3.6, -1.6], gnat = t => [-2.8 + Math.sin(t * 0.5) * 1.4, 0.6 + Math.sin(t * 2) * 0.25, -2.6 + Math.cos(t * 0.5) * 0.6];
+      let houseKid = null, houseT0 = -99, scareKid = null, scareT0 = -99, pumpKid = null, pumpT0 = -99, pumpLit = false;
+      const fresh = (kid, x, z, shirt) => { if (!kid) kid = person(g, x, z, shirt, 0.8); else dressAs(kid, shirt, 0.8); kid.position.set(x, placeFloor(x, z), z); kid.rotation.set(0, 0, 0); kid.rotation.order = 'YXZ'; kid.visible = true; return kid; };
+      const aHouse = { label: 'Naar binnen', emoji: '🚪', badge: [0, 2.1, -3.3], hit: [0, -3.4, 1.8, 1.2, 2.3], at: DOOR, dur: 6.5,
+        hide() { if (houseKid) houseKid.visible = false; },
+        start(t, shirt) { houseKid = fresh(houseKid, ...DOOR, shirt); houseKid.rotation.y = Math.PI; houseT0 = t; sfx('creak'); return [houseKid, 1.05]; }, stop() {} };
+      const aScare = { label: 'Spook laten schrikken', emoji: '👻', badge: [-2.8, 2.1, -2.6], hit: [-2.8, -2.6, 3.2, 1.6, 1.7], at: SC, dur: 6,
+        hide() { if (scareKid) scareKid.visible = false; },
+        start(t, shirt) { scareKid = fresh(scareKid, ...SC, shirt); scareKid.rotation.y = Math.PI; scareT0 = t; return [scareKid, 1.05]; }, stop() {} };
+      const aPump = { label: 'Pompoen aansteken', emoji: '🎃', badge: [PK[0], 1.3, PK[1]], hit: [PK[0], PK[1], 0.9, 0.9, 1.0], at: [PK[0], PK[1] + 0.5], dur: 4.5,
+        hide() { if (pumpKid) pumpKid.visible = false; },
+        start(t, shirt) { pumpKid = fresh(pumpKid, PK[0], PK[1] + 0.5, shirt); pumpKid.rotation.y = Math.PI; pumpT0 = t; pumpLit = false; myPumpkin.material.color.setHex(0x2a2418); return [pumpKid, 1.05]; }, stop() {} };
+      placeActs = [aHouse, aScare, aPump];
+      let last = 0;
       const lightAt = new THREE.Vector3();
       placeAnim = { t: 0, step(t) {
+        const dt = Math.max(0, Math.min(0.1, t - last)); last = t;
         bats.forEach((b, i) => { const a = t * 1.3 + i * Math.PI / 2; b.position.set(Math.cos(a) * 3.4, 4.3 + Math.sin(t * 3 + i) * 0.3, -5.2 + Math.sin(a) * 2.2); b.rotation.y = -a;   // round over the roof
           b.children.forEach(w => { if (w.userData.sx) w.rotation.z = w.userData.sx * Math.sin(t * 14 + i) * 0.6; }); });
-        ghost.position.set(-2.8 + Math.sin(t * 0.5) * 1.4, 0.6 + Math.sin(t * 2) * 0.25, -2.6 + Math.cos(t * 0.5) * 0.6);
+        // the ghost floats round, unless you give it a fright: it comes to see you, you jump up, it shoots off into the sky and comes back
+        let [gx, gy, gz] = gnat(t), op = 0.8, spin = 0;
+        const su = t - scareT0;
+        if (scareKid && scareKid.visible && su < aScare.dur) {
+          const near = [SC[0], 0.7, SC[1] - 0.75], up = [near[0], 4.6, near[2]], mix = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
+          if (su < 2) [gx, gy, gz] = mix([gx, gy, gz], near, ease(su / 2));
+          else if (su < 2.6) { [gx, gy, gz] = near; gx += Math.sin(su * 60) * 0.03; }
+          else if (su < 4.4) { const k = (su - 2.6) / 1.8; [gx, gy, gz] = mix(near, up, ease(k)); spin = k * 12; op = 0.8 * (1 - k); }
+          else { const k = ease((su - 4.4) / 1.6); [gx, gy, gz] = mix(up, [gx, gy, gz], k); op = 0.8 * k; }
+          const hop = su > 2 && su < 2.4 ? Math.sin((su - 2) / 0.4 * Math.PI) * 0.25 : 0;
+          scareKid.position.y = placeFloor(...SC) + hop;
+          if (dt && passed(su, dt, 100, 2)) sfx('boo');
+          if (dt && passed(su, dt, 100, 2.6)) sfx('flee');
+        }
+        ghost.position.set(gx, gy, gz); ghost.rotation.y = spin; gm.opacity = op;
         pumpkins.forEach((f, i) => f.material.color.setHex(Math.sin(t * 6 + i * 2) > -0.6 ? 0xffee58 : 0xff9800));   // flickering candles
         // the lights in the house flicker, and now and then one goes out for a moment
         lit.forEach((w, i) => w.material.color.setHex(Math.sin(t * 0.7 + i * 2.3) < -0.85 ? 0x2a2418 : Math.sin(t * 9 + i * 3) > 0.92 ? 0xffb300 : 0xffd54f));
+        const hu = t - houseT0;
+        if (houseKid && hu < aHouse.dur + 0.5) {   // in through the doors, a spooky time inside, and out again
+          const open = hu < 0.8 ? ease(hu / 0.8) : hu < 5.6 ? 1 : Math.max(0, 1 - (hu - 5.6) / 0.8);
+          doors.forEach(d => d.rotation.y = d.userData.sd * open * 1.4);
+          const into = hu < 0.4 ? 0 : hu < 1.3 ? (hu - 0.4) / 0.9 : hu < 4.4 ? 1 : hu < 5.3 ? 1 - (hu - 4.4) / 0.9 : 0, z = DOOR[1] + (-3.62 - DOOR[1]) * into;
+          if (mine(aHouse)) houseKid.visible = into < 1;   // out of sight while you're inside
+          houseKid.position.z = z; houseKid.position.y = placeFloor(DOOR[0], z); houseKid.rotation.y = hu < 4.4 ? Math.PI : 0;
+          const walking = (hu > 0.4 && hu < 1.3) || (hu > 4.4 && hu < 5.3), sw = walking ? Math.sin(t * 12) * 0.5 : 0;
+          houseKid.userData.legs[0].rotation.x = sw; houseKid.userData.legs[1].rotation.x = -sw;
+          if (hu > 1.3 && hu < 4.4) lit.forEach((w, i) => w.material.color.setHex(Math.sin(t * 22 + i * 2) > 0 ? 0xb2ff59 : 0x1b2b10));   // something's going on in there…
+          if (dt && passed(hu, dt, 100, 2.6)) sfx('boo');
+          if (dt && passed(hu, dt, 100, 5.5)) sfx('creak');
+        }
+        const pu = t - pumpT0;
+        if (pumpKid && pumpKid.visible && pu < aPump.dur) {   // kneeling down by the pumpkin, and there's a light in it
+          pumpKid.rotation.x = Math.min(0.45, pu * 0.9) * (pu < 3.8 ? 1 : Math.max(0, (aPump.dur - pu) / 0.7));
+          if (dt && passed(pu, dt, 100, 1.8)) { sfx('magic'); pumpLit = true; }
+        }
+        if (pumpLit) myPumpkin.material.color.setHex(Math.sin(t * 6 + 9) > -0.6 ? 0xffee58 : 0xff9800);
         if (t >= nextStrike) strike(t);
         const st = t - strikeAt, flash = calm ? (st < 0.5 ? 0.45 * (1 - st / 0.5) : 0)
           : st < 0.07 ? 1 : st < 0.16 ? 0.12 : st < 0.27 ? 0.85 : st < 0.65 ? 0.85 * (1 - (st - 0.27) / 0.38) : 0;
@@ -2225,11 +2455,12 @@ function start() {
       // swings: a frame of round poles with two seats on chains (with kids on them)
       [-2.6, 0.6].forEach(x => [-0.45, 0.45].forEach(dz => rod(g, [x, 0, -4.6 + dz], [x, 2.55, -4.6], 0.06, lam(0xe53935))));
       rod(g, [-2.7, 2.55, -4.6], [0.7, 2.55, -4.6], 0.07, lam(0xe53935)); blob(g, -1.0, -4.6, 3.4, 0.9, 'square');
+      const swingKids = [], swingAmp = [0.5, 0.5], swingTo = [0.5, 0.5];   // a swing stops while its kid is gone, and gets going again
       const swings = [-1.8, -0.2].map((x, i) => {
         const piv = new THREE.Group(); piv.position.set(x, 2.5, -4.6); g.add(piv);
         [-0.22, 0.22].forEach(dx => rod(piv, [dx, 0, 0], [dx, -1.82, 0], 0.015, lam(0x9aa0a8)));
         soft(piv, 0.55, 0.06, 0.3, 0x1e88e5, 0, 0, -1.88, 0.03);
-        sitDown(person(piv, 0, 0, [0xffc107, 0xe91e63][i], 0.8), -1.82); return piv;
+        swingKids.push(sitDown(person(piv, 0, 0, [0xffc107, 0xe91e63][i], 0.8), -1.82)); return piv;
       });
       // the slide: a platform on four posts with a little roof, a ladder at the back and the chute coming down to the front
       const SX = -5.6, red = lam(0xe53935), blue = lam(0x1e88e5), yellow = lam(0xfdd835), grey = lam(0x9aa0a8);
@@ -2256,12 +2487,51 @@ function start() {
       blob(g, -1.0, -2.0, 3.1, 0.5);
       const saw = new THREE.Group(); saw.position.set(-1.0, 0.45, -2.0); g.add(saw); soft(saw, 3.0, 0.1, 0.35, 0x43a047, 0, 0, -0.05, 0.05);
       [-1.3, 1.3].forEach(x => rod(saw, [x * 0.92, 0.05, -0.15], [x * 0.92, 0.05, 0.15], 0.025, grey));   // the handles
-      [-1.3, 1.3].forEach((x, i) => { const k = sitDown(person(saw, x, 0, [0x00bcd4, 0x7e57c2][i], 0.7), 0.05); k.rotation.y = x < 0 ? Math.PI / 2 : -Math.PI / 2; });   // facing each other
+      const sawKids = [-1.3, 1.3].map((x, i) => { const k = sitDown(person(saw, x, 0, [0x00bcd4, 0x7e57c2][i], 0.7), 0.05); k.rotation.y = x < 0 ? Math.PI / 2 : -Math.PI / 2; return k; });   // facing each other
+      let sawAmp = 0.22, sawTo = 0.22;
       // a few trees along the back fence
       [[-3.5, -7.0], [2.6, -7.0], [6.4, -6.6]].forEach(([x, z]) => tree(g, x, z, 0.9, false));
+      // what you can go and play on: you take over the first swing, the slide, one end of the seesaw, or dig in the sandbox
+      // what you walk around: the swings (and the room they swing in), the slide, the seesaw, the castle and bucket, the trees
+      placeBlocks = [[-2.75, -5.6, 0.75, -3.65], [-6.1, -6.9, -5.1, -2.95], [-2.6, -2.25, 0.6, -1.75], [4.2, -2.8, 0.4], [5.2, -2.0, 0.15],
+        [-3.5, -7.0, 0.5], [2.6, -7.0, 0.5], [6.4, -6.6, 0.5]];
+      placeRest = bench(g, 1.9, -1.45);   // near the gate
+      let slideOff = 0, sandKid = null;
+      placeActs = [
+        { label: 'Schommelen', emoji: '🙌', badge: [-1.0, 3.1, -4.6], hit: [-1.0, -4.6, 3.6, 1.6, 2.8], at: [-1.8, -4.2], dur: 11,
+          hide() { swingKids[0].visible = false; swingTo[0] = 0; },
+          start(t, shirt) { dressAs(swingKids[0], shirt, 0.8); sitDown(swingKids[0], -1.82).visible = true; swingTo[0] = 0.5; return [swingKids[0], 1.25]; },
+          stop() { dressAs(swingKids[0], 0xffc107, 0.8); sitDown(swingKids[0], -1.82).visible = true; swingTo[0] = 0.5; } },
+        { label: 'Glijden', emoji: '🛝', badge: [SX, 3.4, -6.0], hit: [SX, -4.9, 1.8, 4.6, 3.1], at: [SX, -2.75], dur: 7,
+          hide() { slider.visible = false; },
+          start(t, shirt) { dressAs(slider, shirt, 0.75, false, sx); slideOff = 2.3 - t % 7 + 7; slider.visible = true; return [slider, 1.15]; },   // from the end of the slide: round, up and down again
+          stop() { dressAs(slider, 0x8bc34a, 0.75, false, sx); slider.visible = true; } },
+        { label: 'Wippen', emoji: '⚖️', badge: [-1.0, 1.9, -2.0], hit: [-1.0, -2.0, 3.4, 1.2, 1.4], at: [-2.3, -1.7], dur: 12,
+          hide() { sawKids[0].visible = false; sawTo = 0; },
+          start(t, shirt) { dressAs(sawKids[0], shirt, 0.7); sitDown(sawKids[0], 0.05).visible = true; sawTo = 0.22; return [sawKids[0], 1.05]; },
+          stop() { dressAs(sawKids[0], 0x00bcd4, 0.7); sitDown(sawKids[0], 0.05).visible = true; sawTo = 0.22; } },
+        { label: 'Zandbak', emoji: '🏰', badge: [4.6, 1.5, -2.6], hit: [4.6, -2.6, 3.2, 3.2, 1.0], at: [4.9, -3.3], dur: 8,
+          hide() { if (sandKid) sandKid.visible = false; },
+          start(t, shirt) {   // sitting in the sand next to the castle, digging
+            if (!sandKid) sandKid = person(g, 4.9, -3.3, shirt, 0.8); else dressAs(sandKid, shirt, 0.8);
+            sitDown(sandKid, 0.1).visible = true; sandKid.rotation.order = 'YXZ'; sandKid.rotation.y = Math.atan2(-0.7, 0.5); return [sandKid, 1.2];
+          },
+          stop() {} },
+      ];
+      let last = 0;
       placeAnim = { t: 0, step(t) {
-        swings.forEach((p, i) => p.rotation.x = Math.sin(t * 2.2 + i * 1.3) * 0.5);
-        saw.rotation.z = Math.sin(t * 1.6) * 0.22;
+        const dt = Math.max(0, Math.min(0.1, t - last)); last = t;
+        swings.forEach((p, i) => { swingAmp[i] += (swingTo[i] - swingAmp[i]) * Math.min(1, dt * 0.8); p.rotation.x = Math.sin(t * 2.2 + i * 1.3) * swingAmp[i]; });
+        sawAmp += (sawTo - sawAmp) * Math.min(1, dt * 0.8); saw.rotation.z = Math.sin(t * 1.6) * sawAmp;
+        if (sandKid) sandKid.rotation.x = Math.max(0, Math.sin(t * 3)) * 0.3;   // bending forward to dig
+        const [aSwing, aSlide, aSaw, aSand] = placeActs;
+        if (mine(aSwing) && t - play.t0 > aSwing.dur - 4) swingTo[0] = 0;   // slowing down at the end of your go, so you can get off
+        if (mine(aSaw) && t - play.t0 > aSaw.dur - 3) sawTo = 0;
+        if (mine(aSwing) && dt && passed(t, dt, Math.PI / 2.2, 0)) sfx('whoosh');   // through the bottom of the swing
+        if (mine(aSaw) && dt && passed(t, dt, Math.PI * 2 / 1.6, Math.PI / 2 / 1.6)) sfx('bump');   // your end hits the ground
+        if (mine(aSand) && dt && passed(t, dt, Math.PI * 2 / 3, 0.15)) sfx('dig');
+        if (mine(aSlide) && dt && passed(t + slideOff, dt, 7, 0)) sfx('whee');
+        t += slideOff;
         const [[x, y, z], i] = at(t), [[x2, , z2]] = at(t + 0.05);
         const k = sitting(t), walking = i >= 3 && i <= 6, sw = walking ? Math.sin(t * 9) * 0.45 : 0;
         slider.position.set(x, y - k * slider.userData.hip, z);
@@ -2272,6 +2542,167 @@ function start() {
       return path;
     } },
   };
+  // ---- playing at a destination: tap something, answer a question, and you get off your bike, go and play there once, then
+  // sit down at the place's resting spot until you tap something else ----
+  // A place's build() may set placeActs: { label, emoji, badge: [x, y, z], hit: [x, z, w, d, h], at: [x, z] (where you start and
+  // stop playing), hop() (optional: where you jump to from there, into the water), swim, dur (seconds of one go), hide() (nobody
+  // plays there for now), start(t, shirt) (you play there now; returns [the figure that is you, the height of your tag on it]),
+  // stop() (the others play there again) }, placeRest: { at: [x, z], seat: [x, z, seat height, facing] }, and placeBlocks:
+  // what you walk around, [x1, z1, x2, z2] rectangles and [x, z, r] circles.
+  const OFF_BIKE = [1.9, 1.7];   // where you stand when you get off your bike
+  let play = null;   // { kid (you, walking or resting), tag, act (where you play now), t0, walk: { pts, i, act (null: to rest), after }, hop, wait }
+  function dressAs(fig, shirt, scale, swim, extra) {   // the same figure in other clothes; it keeps its place, the pose is up to the caller
+    while (fig.children.length) fig.remove(fig.children[0]);
+    return figure(fig, shirt, scale, extra, swim);
+  }
+  // ---- the shortest way round everything in a destination: A* on a 10 cm grid, then the corners cut where nothing's in the way ----
+  const KID_R = 0.15, CELL = 0.1, GX0 = -7.6, GZ0 = -7.6, NX = 153, NZ = 109;
+  let walkGrid = null;
+  function buildWalkGrid() {
+    walkGrid = new Uint8Array(NX * NZ);
+    for (let j = 0; j < NZ; j++) for (let i = 0; i < NX; i++) {
+      const x = GX0 + i * CELL, z = GZ0 + j * CELL;
+      // inside the fence, through the gate, or on the square in front (not in the bike rack or where your bike is)
+      let ok = (x > -7.4 && x < 7.4 && z > -7.4 && z < 0.05) || (x > -0.65 && x < 0.65 && z > -0.1 && z < 0.5) || (x > -3.3 && x < 4.5 && z > 0.35 && z < 3.1);
+      if (ok) ok = ![[1.5, 0.6, 4.5, 1.0], [2.2, 1.1, 2.6, 2.1]].concat(placeBlocks).some(b => b.length === 3 ? Math.hypot(x - b[0], z - b[1]) < b[2] + KID_R
+        : x > b[0] - KID_R && x < b[2] + KID_R && z > b[1] - KID_R && z < b[3] + KID_R);
+      walkGrid[j * NX + i] = ok ? 1 : 0;
+    }
+  }
+  const cellOf = (x, z) => [Math.round((x - GX0) / CELL), Math.round((z - GZ0) / CELL)];
+  const gridFree = (i, j) => i >= 0 && j >= 0 && i < NX && j < NZ && walkGrid[j * NX + i] === 1;
+  function nearestFree([i, j]) {   // where you play may be right against something: start or end the search next to it
+    for (let r = 0; r < 30; r++) for (let di = -r; di <= r; di++) for (let dj = -r; dj <= r; dj++)
+      if (Math.max(Math.abs(di), Math.abs(dj)) === r && gridFree(i + di, j + dj)) return [i + di, j + dj];
+    return [i, j];
+  }
+  function clearLine(a, b) {
+    const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.05));
+    for (let k = 0; k <= n; k++) { const [i, j] = cellOf(a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n); if (!gridFree(i, j)) return false; }
+    return true;
+  }
+  function findPath(from, to) {
+    const [si, sj] = nearestFree(cellOf(...from)), [ei, ej] = nearestFree(cellOf(...to)), N = NX * NZ;
+    const g = new Float32Array(N).fill(Infinity), came = new Int32Array(N).fill(-1), done = new Uint8Array(N), heap = [];
+    const h = (i, j) => { const a = Math.abs(i - ei), b = Math.abs(j - ej); return Math.max(a, b) + 0.4142 * Math.min(a, b); };
+    const push = (f, n) => { heap.push([f, n]); let c = heap.length - 1; while (c > 0) { const p = (c - 1) >> 1; if (heap[p][0] <= heap[c][0]) break; [heap[p], heap[c]] = [heap[c], heap[p]]; c = p; } };
+    const pop = () => {
+      const top = heap[0], last = heap.pop();
+      if (heap.length) { heap[0] = last; let c = 0; for (;;) { const l = 2 * c + 1, r = l + 1; let m = c; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === c) break; [heap[m], heap[c]] = [heap[c], heap[m]]; c = m; } }
+      return top;
+    };
+    const s0 = sj * NX + si, e0 = ej * NX + ei; g[s0] = 0; push(h(si, sj), s0);
+    while (heap.length) {
+      const n = pop()[1]; if (done[n]) continue; done[n] = 1; if (n === e0) break;
+      const i = n % NX, j = (n - i) / NX;
+      for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
+        if (!di && !dj) continue;
+        const ni = i + di, nj = j + dj; if (!gridFree(ni, nj) || (di && dj && (!gridFree(i + di, j) || !gridFree(i, j + dj)))) continue;   // no squeezing past a corner
+        const m = nj * NX + ni, ng = g[n] + (di && dj ? 1.4142 : 1);
+        if (ng < g[m]) { g[m] = ng; came[m] = n; push(ng + h(ni, nj), m); }
+      }
+    }
+    if (came[e0] < 0 && e0 !== s0) return [from, to];   // no way round: straight there
+    const cells = []; for (let n = e0; n >= 0; n = n === s0 ? -1 : came[n]) cells.unshift([GX0 + (n % NX) * CELL, GZ0 + Math.floor(n / NX) * CELL]);
+    const pts = [from, ...cells, to], out = [from];
+    for (let a = 0; a < pts.length - 1;) { let b = pts.length - 1; while (b > a + 1 && !clearLine(pts[a], pts[b])) b--; out.push(pts[b]); a = b; }
+    return out;
+  }
+  function setupActs(g) {
+    if (!placeActs.length) return;
+    play = { kid: null, tag: jijTag(), act: null, t0: 0, walk: null, hop: null, wait: 0 }; play.tag.scale.set(0.7, 0.35, 1);
+    buildWalkGrid();
+    placeActs.forEach(a => {
+      const [x, z, w, d, h] = a.hit;
+      a.hitMesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshBasicMaterial({ visible: false }));
+      a.hitMesh.position.set(x, h / 2, z); a.hitMesh.userData.act = a; g.add(a.hitMesh);
+      a.badgeSp = badgeSprite(a.emoji, C.accent); a.badgeSp.scale.set(0.8, 0.8, 1); a.badgeSp.visible = false; g.add(a.badgeSp);
+      a.badgeHit = new THREE.Mesh(new THREE.SphereGeometry(0.45, 10, 8), a.hitMesh.material); a.badgeHit.position.set(...a.badge); a.badgeHit.userData.act = a; g.add(a.badgeHit);
+    });
+  }
+  const ease = k => k * k * (3 - 2 * k);
+  const mine = a => !!play && play.act === a;   // a sound only for what you do yourself
+  const passed = (t, dt, every, at) => Math.floor((t - at) / every) !== Math.floor((t - dt - at) / every);   // did t just pass at + n·every?
+  // you can pick something while you're on your bike or resting, not while you walk or play
+  const canPlay = () => !!play && phase === 'crossing' && !!cur && cur.k === 'prize' && sitMode === 'atPrize' && !play.walk && !play.hop && !play.act;
+  const myShirt = () => (me && me.extra.shirt) || routeShirt || SHIRTS[0];
+  const playStory = a => `${a.emoji} ${a.label}! Maar eerst een vraag…`;
+  function tapAct(a) {
+    if (!canPlay()) return;
+    const q = knowledgeQ() || knowledgeQ(true);
+    if (!q) return goPlay(a);
+    usedExtra.add(q); cur.extra = q; cur.act = a; sitMode = 'playQ'; sfx('click');
+    const idx = q.answers.map((_, i) => i), order = idx.length > 2 ? shuffle(idx) : idx;
+    drawMidBtns(order.map(i => String(q.answers[i])), order);
+    drawRoutePanel(null, q, playStory(a), 'Kies het goede antwoord 👇');
+  }
+  function answerPlay(b) {   // right: off you go; wrong: tap something again for another question
+    const q = cur.extra, a = cur.act, good = b.answer === q.correct;
+    routeBtns.forEach(o => { if (o.mesh.visible) { o.enabled = false; o.draw(o.label, o === b ? (good ? 'good' : 'bad') : 'dim'); } });
+    if (good) { sfx('good'); buzz(0.5, 80); drawRoutePanel({ good: true, title: 'Goed zo! Daar ga je! 🎉', text: q.explanation }, q, playStory(a)); goPlay(a); }
+    else { sfx('bad'); buzz(0.9, 160); drawRoutePanel({ good: false, title: 'Helaas! Probeer het nog eens 👆', text: revealText(q, b.answer) }, q, playStory(a)); }
+    sitMode = 'playWait'; play.wait = good ? 1.5 : 2.5;
+  }
+  function walkTo(pts, act, after) {
+    const k = play.kid; k.rotation.x = 0;
+    k.position.set(pts[0][0], placeFloor(pts[0][0], pts[0][1]), pts[0][1]); k.visible = true;
+    k.add(play.tag); play.tag.position.set(0, 1.05, 0);
+    play.walk = { pts, i: 0, act, after };
+  }
+  function goPlay(a) {
+    let pts;
+    if (play.kid && play.kid.visible) pts = findPath(placeRest.at, a.at);   // up from the resting spot
+    else {   // off your bike
+      me.offBike = true; me.extra.rider && me.extra.rider.forEach(m => m.visible = false); if (me.tag) me.tag.visible = false;
+      pts = findPath(OFF_BIKE, a.at);
+    }
+    a.hide();
+    if (!play.kid) play.kid = person(placeRoot, 0, 0, myShirt(), 0.8, a.swim); else dressAs(play.kid, myShirt(), 0.8, a.swim);
+    walkTo(pts, a);
+  }
+  function updatePlay(dt) {
+    const t = placeAnim ? placeAnim.t : 0;
+    placeActs.forEach(a => {   // a bobbing badge over everything you can tap
+      a.badgeSp.visible = canPlay();
+      a.badgeSp.position.set(a.badge[0], a.badge[1] + Math.sin(t * 3 + a.badge[0]) * 0.08, a.badge[2]);
+    });
+    if (sitMode === 'playWait' && (play.wait -= dt) <= 0) { sitMode = 'atPrize'; routeBtns.forEach(o => o.mesh.visible = false); }
+    const a = play.act;
+    if (a && t - play.t0 >= a.dur) {   // one go: you climb off or out where you got on, and go and sit down
+      if (play.tag.parent) play.tag.parent.remove(play.tag);
+      a.hide(); play.act = null;
+      walkTo(findPath(a.at, placeRest.at), null, a);
+    }
+    const k = play.kid, p = play.hop;
+    if (p) {   // a jump into the water: up and forward, then down with a splash as you take over
+      p.k = Math.min(1, p.k + dt / 0.5);
+      k.position.set(p.from[0] + (p.to[0] - p.from[0]) * p.k, placeFloor(...p.from) + Math.sin(p.k * Math.PI) * 0.35 - p.k * 0.3, p.from[1] + (p.to[1] - p.from[1]) * p.k);
+      k.userData.legs.forEach(l => l.rotation.x = 0);
+      if (p.k >= 1) { play.hop = null; startAct(p.act, t); }
+      return;
+    }
+    const w = play.walk; if (!w) return;
+    const [tx, tz] = w.pts[w.i + 1], dx = tx - k.position.x, dz = tz - k.position.z, d = Math.hypot(dx, dz), step = 1.5 * dt;
+    if (d > step) {
+      if (passed(t, dt, 1 / 3.2, 0)) sfx('step');
+      k.position.x += dx / d * step; k.position.z += dz / d * step; k.rotation.y = Math.atan2(dx, dz);
+      const sw = Math.sin(t * 9) * 0.45; k.userData.legs[0].rotation.x = sw; k.userData.legs[1].rotation.x = -sw;
+    } else { k.position.x = tx; k.position.z = tz; w.i++; }
+    k.position.y = placeFloor(k.position.x, k.position.z);
+    if (w.i < w.pts.length - 1) return;
+    play.walk = null;
+    if (!w.act) {   // at the resting spot: sit down; the others have the place you played at to themselves again
+      const [x, z, y, yaw] = placeRest.seat; sitDown(k, y); k.position.x = x; k.position.z = z; k.rotation.y = yaw;
+      if (w.after) w.after.stop();
+      return;
+    }
+    if (w.act.hop) { const to = w.act.hop(); k.rotation.y = Math.atan2(to[0] - tx, to[1] - tz); play.hop = { from: [tx, tz], to, k: 0, act: w.act }; return; }
+    startAct(w.act, t);
+  }
+  function startAct(a, t) {   // there: you take over from whoever played there
+    play.kid.visible = false; sfx('yay');
+    const [fig, y] = a.start(t, myShirt()); fig.add(play.tag); play.tag.position.set(0, y, 0); play.act = a; play.t0 = t;
+  }
   function addPrize(a) {
     const g = armGroup(a), cup = new THREE.Group(), gold = new THREE.MeshLambertMaterial({ color: 0xffc83d });
     const base = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.25, 0.7), new THREE.MeshLambertMaterial({ color: 0x5b3a1a })); base.position.y = 0.125; cup.add(base);
@@ -2303,6 +2734,7 @@ function start() {
     if (sitMode === 'leave' && cur.afters && cur.afters.length && !cur.aftersGo && p.u > 0.3) { cur.aftersGo = true; cur.afters.forEach(goShown); }
     if (prizeObj) prizeObj.rotation.y += dt;
     if (placeAnim) { placeAnim.t += dt; placeAnim.step(placeAnim.t); }
+    if (play) updatePlay(dt);
     if (followers.length) updateFollowers();
     if (closureAnims.length) { closureT += dt; closureAnims.forEach(f => f(closureT)); }   // whatever moves at the destination
     if (sitMode === 'turnWait') return uTurn();   // its timer has run out
@@ -2316,7 +2748,7 @@ function start() {
       drawMsgPanel(cur.closure.title, `${cur.closure.text} Je koos "${cur.of.q.answers[cur.of.choice]}". Dat was niet de goede weg.`, '#ff9a9d');
       drawMidBtns(['↩ Omdraaien']);
     } else if (sitMode === 'toPrize') {   // you're there: look around as long as you like, then 'Verder'
-      celebrate(); endedAt = performance.now(); sitMode = 'atPrize'; drawMidBtns(['Verder ▶']);
+      celebrate(); endedAt = performance.now(); sitMode = 'atPrize'; nextBtn.mesh.visible = true; nextBtn.enabled = true; nextBtn.draw('Verder ▶', 'start');
     }
     else { sitMode = 'done'; sitTimer = 0.3; }
   }
@@ -2325,6 +2757,13 @@ function start() {
     q = q || cur.q; storyTxt = storyTxt === undefined ? story(cur.stop) : storyTxt;
     const { ctx, c } = Q; panelBg(ctx, c, 44);
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    if (fb && fb.text) {   // feedback with an explanation: the question small on top, so the explanation gets the room
+      ctx.fillStyle = C.muted; const fq = fitLines(ctx, q.question, 920, 2, 34, 700, 22); drawLines(ctx, fq, 512, 72, fq.size * 1.15);
+      ctx.strokeStyle = C.line; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(60, 140); ctx.lineTo(964, 140); ctx.stroke();
+      ctx.fillStyle = fb.color || (fb.good ? '#5cf0a0' : '#ff9a9d'); fit(ctx, fb.title, 920, 54, 900); ctx.fillText(fb.title, 512, 192);
+      ctx.fillStyle = C.tip; const f = fitLines(ctx, fb.text, 920, 5, 46, 700, 28); drawLines(ctx, f, 512, 365, f.size * 1.18);
+      Q.update(); return;
+    }
     if (storyTxt) { ctx.fillStyle = C.muted; const f = fitLines(ctx, storyTxt, 920, 2, 34, 700, 20); drawLines(ctx, f, 512, 62, f.size * 1.15); }
     const qy = storyTxt ? 205 : 165; ctx.fillStyle = '#ffffff';
     if (q.sign && SIGN_DRAW[q.sign]) {
@@ -2352,7 +2791,8 @@ function start() {
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#ffffff';
     ctx.font = `110px ${FONT}`; ctx.fillText(P.emoji || '🏆', 512, 130);
     ctx.fillStyle = C.accent; const t = arrived ? (P.text || 'Je bent er!') : 'Bijna bij de finish…'; fit(ctx, t, 920, 72, 900); ctx.fillText(t, 512, 270);
-    if (arrived) { ctx.fillStyle = C.text; ctx.font = `700 40px ${FONT}`; ctx.fillText('Je hebt de hele route gereden! 🏆', 512, 380); }
+    if (arrived) { ctx.fillStyle = C.text; ctx.font = `700 40px ${FONT}`; ctx.fillText('Je hebt de hele route gereden! 🏆', 512, 370); }
+    if (arrived && placeActs.length) { ctx.fillStyle = C.tip; ctx.font = `800 40px ${FONT}`; ctx.fillText('Tik op iets om te gaan spelen! 👆', 512, 445); }
     Q.update();
   }
 
@@ -2406,7 +2846,7 @@ function start() {
   const elapsed = () => !startedAt ? 0 : Math.floor(((endedAt || performance.now()) - startedAt) / 1000);
 
   function hideAll() {
-    [S.mesh, Q.mesh, contBtn.mesh, goBtn.mesh, backBtn.mesh, guideBtn.mesh, homeBtn.mesh, allBtn.mesh].forEach(m => m.visible = false);
+    [S.mesh, Q.mesh, contBtn.mesh, goBtn.mesh, backBtn.mesh, guideBtn.mesh, homeBtn.mesh, allBtn.mesh, nextBtn.mesh].forEach(m => m.visible = false);
     ans.forEach(b => b.mesh.visible = false); lvlBtns.forEach(b => b.mesh.visible = false); resBtns.forEach(b => b.mesh.visible = false);
     routeBtns.forEach(b => b.mesh.visible = false); dioRoot.visible = false;
   }
@@ -2843,12 +3283,14 @@ function start() {
   function targets() {
     const list = interactive.filter(m => m.visible);
     if (phase === 'crossing' && sitMode === 'pick') parts.forEach(p => list.push(p.hit));
+    if (canPlay()) placeActs.forEach(a => list.push(a.hitMesh, a.badgeHit));
     return list;
   }
   function hitFromRay() { const h = raycaster.intersectObjects(targets(), false); return h.length ? h[0] : null; }
   function selectHit(hit) {
     if (!hit) return;
     if (hit.object.userData.part) { tapPart(hit.object.userData.part); return; }
+    if (hit.object.userData.act) { tapAct(hit.object.userData.act); return; }
     const b = hit.object.userData.btn; if (b && b.enabled && b.onSelect) b.onSelect();
   }
   const controllers = []; let lastSource = null;
