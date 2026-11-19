@@ -12,12 +12,12 @@
    ===================================================================== */
 
 /* Which list opens by default? (a link with ?list=… wins) */
-const DEFAULT_LIST = 'les2';
+const DEFAULT_LIST = 'les5';
 
 const WORD_LISTS = {
 
   les2: {
-      title: 'Woordenlijst les 2 en 5',
+      title: 'Woordenlijst les 2',
       words: [
         { word: 'balanceren',           meaning: 'In evenwicht proberen te blijven.', tip: '' },
         { word: 'beoefenen',            meaning: 'Iets doen of uitvoeren. Als je een sport beoefent, doe je aan die sport.', tip: '' },
@@ -39,7 +39,12 @@ const WORD_LISTS = {
         { word: 'de tactiek',           meaning: 'De manier waarop je iets aanpakt om iets te bereiken.', tip: '' },
         { word: 'de techniek',          meaning: 'De manier waarop je iets doet.', tip: '' },
         { word: 'de timing',            meaning: 'Iets op het goede moment doen.', tip: '' },
-        // les 5
+      ]
+    },
+  les5: {
+      title: 'Woordenlijst les 5',
+      words: [
+
         { word: 'aanbevelen',           meaning: 'Aanprijzen. Zeggen dat iets of iemand goed is.', tip: '' },
         { word: 'de aanloop',           meaning: 'Een stukje rennen om vaart te maken voor een sprong.', tip: '' },
         { word: 'actief',               meaning: 'Actieve mensen doen veel en bewegen veel.', tip: '' },
@@ -62,4 +67,4 @@ const WORD_LISTS = {
         { word: 'de waaghals',          meaning: 'Iemand die veel durft en niet snel bang is.', tip: '' },
       ]
     },
-};
+  };
