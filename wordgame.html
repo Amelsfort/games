@@ -31,26 +31,37 @@
     padding: 0.9em 1.6em; box-shadow: 0 4px 0 var(--accent-shadow, #b77900); cursor: pointer; }
   #vr:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
   #vr[hidden] { display: none; }
+  /* phones are played upright: held sideways, this covers the game */
+  #turn { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px; padding: 16px; background: var(--bg); color: var(--fg); text-align: center;
+    font: 900 1.6rem/1.3 "Nunito", "Trebuchet MS", system-ui, sans-serif; }
+  #turn[hidden] { display: none; }
+  #turn .phone { font-size: 4.5rem; animation: turn 2.4s ease-in-out infinite; }
+  @keyframes turn { 0%, 25% { transform: rotate(-90deg); } 55%, 100% { transform: rotate(0deg); } }
+  @media (prefers-reduced-motion: reduce) { #turn .phone { animation: none; } }
   #note { pointer-events: auto; margin: 0; max-width: 34rem; text-align: center; font-size: 0.95rem;
     line-height: 1.4; color: var(--muted); background: var(--chip); padding: 0.5em 0.9em; border-radius: 12px; }
 </style>
 </head>
 <body>
+<div id="turn" hidden><div class="phone" aria-hidden="true">📱</div><p>Draai je telefoon rechtop</p></div>
 <div id="app">
   <div id="hud">
     <button id="vr" hidden>🥽 Speel in VR</button>
-    <p id="note">Laden…</p>
+    <p id="note" hidden></p>
   </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="settings.js"></script>
 <script src="themes.js"></script>
+<script src="progress.js"></script>
 <script src="wordlists.js"></script>
 <script>
 /* =====================================================================
    THE WORD LISTS are in wordlists.js, next to this file.
-   There you can add and edit lists and choose which one opens by default.
+   There you can add and edit subjects (with their parts and test date)
+   and choose which subject opens the first time.
    Below are only the game settings.
    ===================================================================== */
 
@@ -86,28 +97,180 @@ logGame('bezoek');
 function start() {
   const FONT = '"Nunito", "Trebuchet MS", system-ui, sans-serif';
   const C = THEME.ui, W = THEME.words;
-  const LISTS = (typeof WORD_LISTS === 'object' && WORD_LISTS) ? WORD_LISTS : {};
-  const LIST_KEYS = Object.keys(LISTS).filter(k => LISTS[k] && Array.isArray(LISTS[k].words));
-  const cleanWords = arr => arr
+  // the words are grouped by subject, every subject has one or more parts (see wordlists.js)
+  const SUBJECTS = (typeof WORD_SUBJECTS === 'object' && WORD_SUBJECTS) ? WORD_SUBJECTS : {};
+  const SUBJECT_KEYS = Object.keys(SUBJECTS).filter(k => SUBJECTS[k] && Array.isArray(SUBJECTS[k].parts) && SUBJECTS[k].parts.some(Array.isArray));
+  const MAX_PARTS = 4;   // toggle buttons on the start screen
+  const cleanWords = arr => (Array.isArray(arr) ? arr : [])
     .filter(w => w && String(w.word || '').trim() && String(w.meaning || '').trim())
     .map(w => ({ word: String(w.word).trim(), meaning: String(w.meaning).trim(), tip: String(w.tip || '').trim() }));
-  let DATA = [], NOPT = 0, TITLE = 'Woorden', listIdx = 0;
-  const listName = () => LIST_KEYS[listIdx] || '';
-  function useList(i) {
-    if (!LIST_KEYS.length) return;
-    listIdx = ((i % LIST_KEYS.length) + LIST_KEYS.length) % LIST_KEYS.length;
-    const L = LISTS[LIST_KEYS[listIdx]];
-    DATA = cleanWords(L.words); NOPT = Math.min(4, DATA.length);
-    TITLE = String(L.title || LIST_KEYS[listIdx]);
-    try { localStorage.setItem('words-list', LIST_KEYS[listIdx]); } catch (e) {}
+  let DATA = [], NOPT = 0, TITLE = 'Woorden', subjectIdx = 0, PARTS = [], pickParts = new Set([0]);
+  const subjectKey = () => SUBJECT_KEYS[subjectIdx] || '';
+  const partsName = () => [...pickParts].sort().map(i => i + 1).join('+');
+  // what is logged to the sheet (field l), e.g. 'sport 1+2'
+  const listName = () => subjectKey() + (PARTS.length > 1 ? ' ' + partsName() : '');
+  function useParts() {
+    DATA = [];
+    [...pickParts].sort().forEach(i => { DATA = DATA.concat(PARTS[i] || []); });
+    NOPT = Math.min(4, DATA.length);
     loadBest();
   }
-  function startList() {
-    const want = new URLSearchParams(location.search).get('list');
-    let stored = null; try { stored = localStorage.getItem('words-list'); } catch (e) {}
-    const std = typeof DEFAULT_LIST === 'string' ? DEFAULT_LIST : null;
-    const pick = [want, std && !want ? std : null, stored, LIST_KEYS[LIST_KEYS.length - 1]].find(k => k && LIST_KEYS.includes(k));
-    useList(Math.max(0, LIST_KEYS.indexOf(pick)));
+  // selects the parts the practice plan suggests (see nextGoal); the player can change them freely
+  function pickSuggested() {
+    pickParts = new Set(nextGoal().parts.filter(j => j < PARTS.length));
+    useParts();
+  }
+  function useSubject(i) {
+    if (!SUBJECT_KEYS.length) return;
+    subjectIdx = ((i % SUBJECT_KEYS.length) + SUBJECT_KEYS.length) % SUBJECT_KEYS.length;
+    const L = SUBJECTS[subjectKey()];
+    PARTS = L.parts.filter(Array.isArray).slice(0, MAX_PARTS).map(cleanWords);
+    TITLE = String(L.title || subjectKey());
+    try { localStorage.setItem('words-subject', subjectKey()); } catch (e) {}
+    pickSuggested();
+  }
+  function startSubject() {
+    const q = new URLSearchParams(location.search), want = q.get('subject') || q.get('list');
+    let stored = null; try { stored = localStorage.getItem('words-subject'); } catch (e) {}
+    const std = typeof DEFAULT_SUBJECT === 'string' ? DEFAULT_SUBJECT : null;
+    const pick = [want, stored, std, SUBJECT_KEYS[0]].find(k => k && SUBJECT_KEYS.includes(k));
+    useSubject(Math.max(0, SUBJECT_KEYS.indexOf(pick)));
+  }
+
+  // ---------- practice plan ----------
+  // Every game is remembered per subject on this device ('words-plan-<subject>'): which parts, how
+  // and how many were right first time. From that the start screen suggests what to practise today:
+  // first every part on its own until it goes well, then all parts together, then with the monsters
+  // (faster), and after that once a day until the test. Words that went wrong often are kept in
+  // 'words-hard-<subject>' (+2 when wrong, -1 when right first time) and named as "Let op: …".
+  const PLAN_KEEP = 80, GOOD = 0.9;   // results kept per subject; part of the questions right first time that counts as good
+  const dayStr = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const loadJson = (k, def) => { try { const v = JSON.parse(localStorage.getItem(k) || 'null'); return v && typeof v === 'object' ? v : def; } catch (e) { return def; } };
+  const saveJson = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+  const planLog = () => { const l = loadJson('words-plan-' + subjectKey(), []); return Array.isArray(l) ? l.filter(e => e && Array.isArray(e.p)) : []; };
+  function recordPlan(m, good, n, lost, seen, missed) {
+    const log = planLog();
+    log.push({ p: [...pickParts].sort(), m, good, n, lost: !!lost, day: dayStr(new Date()) });
+    saveJson('words-plan-' + subjectKey(), log.slice(-PLAN_KEEP));
+    const hard = loadJson('words-hard-' + subjectKey(), {});
+    seen.forEach(i => {
+      const w = DATA[i].word, v = (hard[w] || 0) + (missed.has(i) ? 2 : -1);
+      if (v > 0) hard[w] = Math.min(10, v); else delete hard[w];
+    });
+    saveJson('words-hard-' + subjectKey(), hard);
+  }
+  // days until the test of this subject (null: no date, or the test is over)
+  function daysToTest() {
+    const t = String((SUBJECTS[subjectKey()] || {}).test || '').match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (!t) return null;
+    const now = new Date(), today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const day = new Date(+t[1], +t[2] - 1, +t[3]), d = Math.round((day - today) / 86400000);
+    return d < 0 ? null : { d, day };
+  }
+  function testLine() {
+    const t = daysToTest(); if (!t) return '';
+    if (t.d === 0) return 'Vandaag is de toets. Succes! 🍀';
+    if (t.d === 1) return 'Morgen is de toets! 🍀';
+    const when = t.day.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
+    return `⏳ Nog ${t.d} dagen tot de toets (${when})`;
+  }
+  // ---- the plan: a ladder of goals that get harder, on practice days that spread out when it goes well
+  const toDate = str => { const m = String(str).split('-'); return new Date(+m[0], +m[1] - 1, +m[2]); };
+  const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+  const dayDiff = (a, b) => Math.round((b - a) / 86400000);
+  const longDay = d => d.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
+  // 'vandaag', 'morgen', 'overmorgen' or a date like 'zaterdag 28 november'
+  const dayName = d => {
+    const now = new Date(), n = dayDiff(new Date(now.getFullYear(), now.getMonth(), now.getDate()), d);
+    return n === 0 ? 'vandaag' : n === 1 ? 'morgen' : n === 2 ? 'overmorgen' : longDay(d);
+  };
+  // the first goal on the ladder that is not reached yet: { text, steps } (steps = how many goals are left)
+  function nextGoal() {
+    const log = planLog(), all = PARTS.map((_, i) => i), n = all.length;
+    const count = parts => parts.reduce((a, i) => a + (PARTS[i] || []).length, 0);
+    const atLeast = parts => Math.ceil(count(parts) * GOOD);
+    const last = pred => { for (let i = log.length - 1; i >= 0; i--) if (!log[i].lost && pred(log[i])) return log[i]; return null; };
+    const ratio = e => e ? e.good / Math.max(1, e.n) : 0;
+    const both = n > 1 ? `Deel ${all.map(i => i + 1).join(' + ')}` : 'Alle woorden';
+    const together = e => e.p.length === n, mon = W.monsters.toLowerCase();
+    const best = bestTimeOf(all, 'monsters') || bestTimeOf(all, 'calm');
+    const ladder = [];
+    if (n > 1) all.forEach(i => ladder.push({ parts: [i], ok: ratio(last(e => e.p.includes(i))) >= GOOD, text: `Deel ${i + 1} rustig: minstens ${atLeast([i])} van ${count([i])} meteen goed` }));
+    ladder.push({ parts: all, ok: ratio(last(together)) >= GOOD, text: `${both} rustig: minstens ${atLeast(all)} van ${count(all)} meteen goed` });
+    ladder.push({ parts: all, ok: ratio(last(e => together(e) && e.m === 'calm')) >= 1 || ratio(last(e => together(e) && e.m === 'monsters')) >= GOOD, text: `${both} rustig: alles meteen goed` });
+    ladder.push({ parts: all, ok: ratio(last(e => together(e) && e.m === 'monsters')) >= GOOD, text: `${both} met de ${mon}: minstens ${atLeast(all)} van ${count(all)} goed` });
+    ladder.push({ parts: all, ok: ratio(last(e => together(e) && e.m === 'monsters')) >= 1, text: `${both} met de ${mon}: alles goed` });
+    const i = ladder.findIndex(g => !g.ok);
+    if (i >= 0) return { text: ladder[i].text, steps: ladder.length - i, parts: ladder[i].parts };
+    return { parts: all, text: best ? `${both}: alles goed én sneller dan ${fmtTime(best)}` : `${both}: alles goed`, steps: 0 };
+  }
+  // fastest time for a set of parts (the times are kept per word list, see timeKey)
+  function bestTimeOf(parts, m) {
+    const keep = pickParts; pickParts = new Set(parts); const data = DATA;
+    DATA = []; parts.forEach(i => { DATA = DATA.concat(PARTS[i] || []); });
+    const t = bestTime(m); pickParts = keep; DATA = data; return t;
+  }
+  // The practice days, worked out again after every game (see the gap below). With many goals left and
+  // few days: every day. The last one is always the day before the test. Returns { next: Date, days: [Date…] (up to the test), today: played today }.
+  function practiceDays() {
+    const log = planLog(), now = new Date(), today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const test = daysToTest(), lastDay = test && test.d >= 1 ? addDays(test.day, -1) : null;
+    const days = [...new Set(log.map(e => e.day))].sort();
+    // every practice day gets its best result (part right first time); the gap to the next practice
+    // follows from that: struggling = every day, good = every other day when it went up, perfect days in a
+    // row = further apart, and a big jump forward earns an extra day
+    const dayScore = d => Math.max(0, ...log.filter(e => e.day === d && !e.lost).map(e => e.good / Math.max(1, e.n)));
+    const scores = days.map(dayScore), r = scores.length ? scores[scores.length - 1] : 0, prev = scores.length > 1 ? scores[scores.length - 2] : null;
+    let streak = 0; for (let i = scores.length - 1; i >= 0 && scores[i] >= 1; i--) streak++;
+    const GAPS = [2, 3, 4, 6];   // days until the next practice after 1, 2, 3, 4+ perfect days in a row
+    let gap = r >= 1 ? GAPS[Math.min(streak, GAPS.length) - 1] : r >= GOOD && prev !== null && r > prev ? 2 : 1;
+    if (prev !== null && r - prev >= 0.15 && r >= GOOD) gap++;
+    const goal = nextGoal();
+    if (lastDay && goal.steps >= dayDiff(today, lastDay)) gap = 1;     // much to do, little time: every day
+    const played = days.length ? toDate(days[days.length - 1]) : null;
+    let next = played ? addDays(played, gap) : today;
+    if (next < today) next = today;
+    if (lastDay && next > lastDay && today <= lastDay) next = lastDay;
+    // the days after that, assuming every practice reaches its goal: one goal further each time and,
+    // once the goals are reached, further apart; the day before the test is always a practice day
+    const list = [next];
+    if (lastDay && next < lastDay) {
+      let d = next, s = streak, k = goal.steps;
+      while (true) {
+        s++; k = Math.max(0, k - 1);
+        const g = k >= dayDiff(d, lastDay) ? 1 : k > 0 ? 1 + Math.min(1, s - 1) : GAPS[Math.min(s, GAPS.length) - 1];
+        d = addDays(d, g);
+        if (d >= lastDay) break;
+        list.push(d);
+      }
+      list.push(lastDay);
+    }
+    return { next, days: list, today: !!played && +played === +today, goal, test, lastDay, todayDate: today };
+  }
+  // one line for the start and end screen
+  function planTip() {
+    const p = practiceDays(), g = p.goal.text;
+    if (p.test && p.test.d === 0) return 'Vandaag is de toets. Je hebt goed geoefend! 🍀';
+    if (p.today && p.lastDay && +p.todayDate === +p.lastDay) return 'Morgen is de toets. Je bent er klaar voor! 🍀';
+    if (p.today && p.next > p.todayDate) {
+      // the last game of today decides: good enough, or once more
+      const log = planLog(), e = log[log.length - 1], ok = e && !e.lost && e.good / Math.max(1, e.n) >= GOOD;
+      return ok ? `Klaar voor vandaag! 👍 Volgende keer ${dayName(p.next)}: ${g}` : `Nog een keer, vandaag of ${dayName(p.next)}: ${g}`;
+    }
+    if (p.next > p.todayDate) return `Je loopt voor op schema! Volgende oefendag ${dayName(p.next)}: ${g}`;
+    return `Doel: ${g}`;
+  }
+  // the practice days until the test, e.g. "Oefendagen: zaterdag 28 november · dinsdag 1 december · …"
+  function planDays() {
+    const p = practiceDays(); if (!p.lastDay) return '';
+    const names = p.days.map(dayName);
+    // a long list: the first ones and the last one
+    return 'Oefendagen: ' + (names.length > 6 ? [...names.slice(0, 4), '…', names[names.length - 1]] : names).join(' · ');
+  }
+  // the words that went wrong most often (only those in the chosen parts)
+  function hardWords(max) {
+    const hard = loadJson('words-hard-' + subjectKey(), {}), here = new Set(DATA.map(d => d.word));
+    return Object.keys(hard).filter(w => here.has(w) && hard[w] >= 2).sort((a, b) => hard[b] - hard[a]).slice(0, max);
   }
 
   const app = document.getElementById('app');
@@ -163,9 +326,9 @@ function start() {
   const BTN_COLORS = C.btn;
   function makeButton(w, h, cw, maxLines) {
     const p = canvasPlane(w, h, cw);
-    p.enabled = true; p.state = 'idle'; p.mesh.userData.btn = p;
+    p.enabled = true; p.state = 'idle'; p.base = 1; p.maxLines = maxLines; p.mesh.userData.btn = p;
     p.draw = function (label, state) {
-      this.state = state;
+      this.state = state; this.label = label;
       const { ctx, c } = this, [a, b] = BTN_COLORS[state], r = Math.min(42, c.height * 0.3);
       ctx.clearRect(0, 0, c.width, c.height);
       ctx.fillStyle = 'rgba(0,0,0,0.35)'; rr(ctx, 8, 14, c.width - 16, c.height - 18, r); ctx.fill();
@@ -173,7 +336,7 @@ function start() {
       ctx.fillStyle = g; rr(ctx, 8, 6, c.width - 16, c.height - 20, r); ctx.fill();
       ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 5; ctx.stroke();
       ctx.fillStyle = state === 'start' ? C.startInk : '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      const ml = maxLines || 1, inner = c.height - 34;
+      const ml = this.maxLines || 1, inner = c.height - 34;
       const f = fitLines(ctx, label, c.width - 70, ml, Math.min(64, inner * (ml === 1 ? 0.62 : 0.4)), ml === 1 ? 900 : 800, 20);
       const lh = f.size * 1.12, y0 = (c.height - 14) / 2 + 2 - (f.lines.length - 1) * lh / 2;
       f.lines.forEach((l, i) => ctx.fillText(l, c.width / 2, y0 + i * lh));
@@ -182,29 +345,54 @@ function start() {
     interactive.push(p.mesh);
     return p;
   }
+  // gives a button a new shape (same object, so everything that refers to it keeps working)
+  function reshapeButton(b, w, h, cw, maxLines) {
+    const p = canvasPlane(w, h, cw), i = interactive.indexOf(b.mesh), vis = b.mesh.visible;
+    ui.remove(b.mesh); b.mesh.geometry.dispose(); b.tex.dispose(); b.mesh.material.dispose();
+    Object.assign(b, { mesh: p.mesh, c: p.c, ctx: p.ctx, tex: p.tex, update: p.update, maxLines });
+    b.mesh.userData.btn = b; b.mesh.visible = vis; interactive[i] = b.mesh; ui.add(b.mesh);
+    if (b.label !== undefined) b.draw(b.label, b.state);
+  }
 
   // ---------- game UI ----------
   const ui = new THREE.Group(); scene.add(ui);
   const Z = -2.4;
-  const S = canvasPlane(1.5, 0.19, 1024); S.mesh.position.set(0, 2.66, Z); ui.add(S.mesh);
-  const Q = canvasPlane(1.8, 0.9, 1024);  Q.mesh.position.set(0, 2.1, Z);  ui.add(Q.mesh);
+  // Two layouts: wide (computer, tablet, landscape, VR) and tall (phone held upright). In the tall one
+  // the panel is narrower with bigger text and the answers are full-width buttons under each other.
+  const S = canvasPlane(1.5, 0.19, 1024); ui.add(S.mesh);
+  let Q = null, tall = false;
+  function buildPanel() {
+    if (Q) { ui.remove(Q.mesh); Q.mesh.geometry.dispose(); Q.tex.dispose(); Q.mesh.material.dispose(); }
+    Q = tall ? canvasPlane(1.1, 1.0, 1024) : canvasPlane(1.8, 0.9, 1024);
+    ui.add(Q.mesh);
+  }
   const answerBtns = [];
-  [[-0.46, 1.38], [0.46, 1.38], [-0.46, 0.99], [0.46, 0.99]].forEach(([x, y], i) => {
-    const b = makeButton(0.88, 0.37, 768, 5); b.mesh.position.set(x, y, Z + 0.08); b.index = i;
+  for (let i = 0; i < 4; i++) {
+    const b = makeButton(0.88, 0.37, 768, 5); b.index = i;
     b.onSelect = () => answer(b); ui.add(b.mesh); answerBtns.push(b);
-  });
-  const calmBtn = makeButton(0.95, 0.3, 512, 1); calmBtn.mesh.position.set(-0.51, 1.3, Z + 0.08);
+  }
+  const calmBtn = makeButton(0.95, 0.3, 512, 1);
   calmBtn.onSelect = () => { if (DATA.length < 2) return; sfx('click'); newGame('calm'); }; ui.add(calmBtn.mesh);
-  const monBtn = makeButton(0.95, 0.3, 512, 1); monBtn.mesh.position.set(0.51, 1.3, Z + 0.08);
+  const monBtn = makeButton(0.95, 0.3, 512, 1);
   monBtn.onSelect = () => { if (DATA.length < 2) return; sfx('click'); newGame('monsters'); }; ui.add(monBtn.mesh);
-  const prevBtn = makeButton(0.24, 0.22, 256, 1); prevBtn.mesh.position.set(-0.78, 0.98, Z + 0.08);
-  const nextBtn = makeButton(0.24, 0.22, 256, 1); nextBtn.mesh.position.set(0.78, 0.98, Z + 0.08);
-  const listLabel = canvasPlane(1.24, 0.2, 1024); listLabel.mesh.position.set(0, 0.98, Z + 0.08); ui.add(listLabel.mesh);
-  prevBtn.onSelect = () => { sfx('click'); useList(listIdx - 1); drawStart(); drawListLabel(); };
-  nextBtn.onSelect = () => { sfx('click'); useList(listIdx + 1); drawStart(); drawListLabel(); };
+  const prevBtn = makeButton(0.24, 0.22, 256, 1);
+  const nextBtn = makeButton(0.24, 0.22, 256, 1);
+  const listLabel = canvasPlane(1.24, 0.2, 1024); ui.add(listLabel.mesh);
+  prevBtn.onSelect = () => { sfx('click'); useSubject(subjectIdx - 1); drawStart(); showModeButtons(true); place(); };
+  nextBtn.onSelect = () => { sfx('click'); useSubject(subjectIdx + 1); drawStart(); showModeButtons(true); place(); };
   ui.add(prevBtn.mesh); ui.add(nextBtn.mesh);
+  // toggle buttons for the parts of the subject: any combination; with none on, the play buttons are off
+  const partBtns = [];
+  for (let i = 0; i < MAX_PARTS; i++) {
+    const b = makeButton(0.42, 0.22, 384, 1); b.index = i;
+    b.onSelect = () => {
+      if (!pickParts.has(i)) pickParts.add(i); else pickParts.delete(i);
+      sfx('click'); useParts(); drawStart(); showModeButtons(true);
+    };
+    ui.add(b.mesh); partBtns.push(b);
+  }
   // home: during a game back to the start screen, on the start screen back to all games
-  const homeBtn = makeButton(0.5, 0.12, 512, 1); homeBtn.mesh.position.set(-0.62, 2.82, Z + 0.08); ui.add(homeBtn.mesh);
+  const homeBtn = makeButton(0.5, 0.12, 512, 1); ui.add(homeBtn.mesh);
   homeBtn.onSelect = () => {
     sfx('click');
     if (phase !== 'start') { goHome(); return; }
@@ -214,14 +402,19 @@ function start() {
   function drawListLabel() {
     const { ctx, c } = listLabel; panelBg(ctx, c, 60);
     ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    const txt = `📚 Lijst ${listIdx + 1} van ${LIST_KEYS.length}: ${TITLE}`;
+    const txt = `📚 Onderwerp: ${TITLE}`;
     fit(ctx, txt, c.width - 60, 58, 800); ctx.fillText(txt, c.width / 2, c.height / 2 + 2); listLabel.update();
   }
   function showModeButtons(on) {
     calmBtn.mesh.visible = monBtn.mesh.visible = on;
-    const many = on && LIST_KEYS.length > 1;
+    const many = on && SUBJECT_KEYS.length > 1, parts = on && PARTS.length > 1;
     prevBtn.mesh.visible = nextBtn.mesh.visible = listLabel.mesh.visible = many;
-    if (on) { calmBtn.draw('📖 Rustig oefenen', 'start'); monBtn.draw(`${W.monsterIcon} ${W.monsters}`, 'good'); }
+    partBtns.forEach((b, i) => {
+      b.mesh.visible = parts && i < PARTS.length;
+      if (b.mesh.visible) b.draw(`${pickParts.has(i) ? '✔ ' : ''}Deel ${i + 1}`, pickParts.has(i) ? 'start' : 'idle');
+    });
+    const can = DATA.length >= 2;   // nothing chosen (or too few words): the play buttons are grey and do nothing
+    if (on) { calmBtn.draw('📖 Rustig oefenen', can ? 'start' : 'dim'); monBtn.draw(`${W.monsterIcon} ${W.monsters}`, can ? 'good' : 'dim'); }
     if (many) { prevBtn.draw('◀', 'idle'); nextBtn.draw('▶', 'idle'); drawListLabel(); }
   }
 
@@ -244,43 +437,80 @@ function start() {
   function drawStart() {
     const { ctx, c } = Q; panelBg(ctx, c, 44);
     ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = C.accent; fit(ctx, TITLE, c.width - 120, 112, 900); ctx.fillText(TITLE, 512, 140);
-    ctx.fillStyle = '#ffffff'; ctx.font = `800 54px ${FONT}`; ctx.fillText('Wat betekent het?', 512, 215);
-    ctx.fillStyle = C.text; ctx.font = `700 42px ${FONT}`;
-    ctx.fillText(!LIST_KEYS.length ? 'wordlists.js niet gevonden' : DATA.length < 2 ? 'Zet minstens 2 woorden in deze lijst.' : `${DATA.length} woorden om te oefenen`, 512, 305);
-    ctx.fillStyle = C.muted; ctx.font = `700 38px ${FONT}`;
-    const bc = bestTime('calm'), bm = bestTime('monsters');
-    if (!bc && !bm) ctx.fillText('Kies hoe je wilt spelen 👇', 512, 380);
-    else {
-      if (bc) ctx.fillText(`Snelste tijd rustig: ${fmtTime(bc)}`, 512, 375);
-      if (bm) ctx.fillText(`Snelste tijd monsters: ${fmtTime(bm)}`, 512, bc ? 430 : 375);
+    // y positions: title, subtitle, words, fastest time, test, tip (2 lines), tricky words
+    const Y = tall ? [140, 235, 330, 400, 490, 580] : [88, -1, 148, -1, 205, 262], mw = c.width - 90;
+    const line = (txt, y, size, weight) => { fit(ctx, txt, mw, size, weight); ctx.fillText(txt, 512, y); };
+    ctx.fillStyle = C.accent; line(TITLE, Y[0], tall ? 110 : 84, 900);
+    if (tall) { ctx.fillStyle = '#ffffff'; line('Wat betekent het?', Y[1], 62, 800); }
+    if (!SUBJECT_KEYS.length) { ctx.fillStyle = C.text; line('wordlists.js niet gevonden', Y[2], tall ? 56 : 44, 800); Q.update(); return; }
+    // nothing (or too little) chosen: say so instead of the number of words; the test and the plan stay
+    const playable = DATA.length >= 2;
+    const words = playable ? `${PARTS.length > 1 ? `Deel ${partsName().replace(/\+/g, ' + ')}: ` : ''}${DATA.length} woorden`
+      : !pickParts.size ? 'Kies welke delen je wilt oefenen 👇' : 'Zet minstens 2 woorden in dit deel.';
+    const bc = playable ? bestTime('calm') : 0, bm = playable ? bestTime('monsters') : 0;
+    const times = [bc ? `rustig ${fmtTime(bc)}` : '', bm ? `monsters ${fmtTime(bm)}` : ''].filter(Boolean).join(', ');
+    ctx.fillStyle = C.text;
+    if (tall) {
+      line(words, Y[2], 56, 800);
+      if (times) { ctx.fillStyle = C.muted; line(`Snelste tijd: ${times}`, Y[3], 44, 800); }
+    } else line(words + (bc ? `  ·  snelste tijd ${fmtTime(bc)}` : ''), Y[2], 40, 800);
+    const test = testLine();
+    let y = Y[4] - (tall && !times ? 50 : 0);
+    if (test) { ctx.fillStyle = C.accent; line(test, y, tall ? 48 : 38, 800); y += tall ? 90 : 57; }
+    // the goal for the next practice, the practice days until the test and the words that need attention
+    const tip = '💡 ' + planTip(), size = tall ? 48 : 38;
+    ctx.fillStyle = '#5cf0a0';
+    const f = fitLines(ctx, tip, mw, 2, size, 800, 28), lh = f.size * 1.2;
+    f.lines.forEach((l, i) => ctx.fillText(l, 512, y + i * lh));
+    y += (f.lines.length - 1) * lh + (tall ? 85 : 58);
+    const days = planDays(), hard = hardWords(3);
+    ctx.fillStyle = C.muted;
+    if (days) {
+      const df = fitLines(ctx, days, mw, 3, tall ? 40 : 32, 800, 24);
+      df.lines.forEach((l, i) => ctx.fillText(l, 512, y + i * df.size * 1.2));
+      y += (df.lines.length - 1) * df.size * 1.2 + (tall ? 70 : 50);
     }
+    if (hard.length && y < c.height - 40) line(`Let op: ${hard.join(', ')}`, y, tall ? 42 : 34, 800);
     Q.update();
   }
+  let lastFb = null, lastEnd = null, endBestTime = 0;   // to redraw the same screen when the layout changes
+  // y positions per layout: header, middle of the word/meaning, divider, prompt, feedback title, first tip line
+  const QL = { wide: [64, 205, 312, 410, 362, 408], tall: [90, 290, 515, 620, 600, 700] };
   function drawQuestion(fb) {
-    const { ctx, c } = Q, d = DATA[cur], toWord = curDir === 'b2w'; panelBg(ctx, c, 44);
+    lastFb = fb;
+    const { ctx, c } = Q, d = DATA[cur], toWord = curDir === 'b2w', L = tall ? QL.tall : QL.wide; panelBg(ctx, c, 44);
     ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = C.muted; ctx.font = `700 40px ${FONT}`;
-    ctx.fillText(toWord ? 'Welk woord betekent:' : 'Wat betekent dit woord?', 512, 64);
+    ctx.fillStyle = C.muted; fit(ctx, toWord ? 'Welk woord betekent:' : 'Wat betekent dit woord?', 920, tall ? 58 : 46, 800);
+    ctx.fillText(toWord ? 'Welk woord betekent:' : 'Wat betekent dit woord?', 512, L[0]);
     ctx.fillStyle = C.accent;
     if (toWord) {
       ctx.textBaseline = 'middle';
-      const f = fitLines(ctx, d.meaning, 920, 4, 64, 800, 26), lh = f.size * 1.18, y0 = 195 - (f.lines.length - 1) * lh / 2;
+      // the meaning has to fit between the header and the divider: long meanings get smaller letters
+      const top = L[0] + 20, bottom = L[2] - 16, room = bottom - top;
+      let size = tall ? 80 : 64, f;
+      do { f = fitLines(ctx, d.meaning, 920, tall ? 5 : 4, size, 800, 26); size = f.size - 4; } while (f.lines.length * f.size * 1.18 > room && size >= 26);
+      const lh = f.size * 1.18, y0 = (top + bottom) / 2 - (f.lines.length - 1) * lh / 2;
       f.lines.forEach((l, i) => ctx.fillText(l, 512, y0 + i * lh));
       ctx.textBaseline = 'alphabetic';
     } else {
-      fit(ctx, d.word, 920, 112, 900); ctx.fillText(d.word, 512, 230);
+      fit(ctx, d.word, 920, tall ? 130 : 112, 900); ctx.fillText(d.word, 512, L[1] + 35);
     }
     ctx.strokeStyle = C.line; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(60, 312); ctx.lineTo(964, 312); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(60, L[2]); ctx.lineTo(964, L[2]); ctx.stroke();
     if (!fb) {
-      ctx.fillStyle = C.text; ctx.font = `700 42px ${FONT}`; ctx.fillText(mode === 'monsters' ? `Raak het goede ${W.monster}! ${W.monsterIcon}` : 'Kies het goede antwoord 👇', 512, 410);
+      ctx.fillStyle = C.text; const t = mode === 'monsters' ? `Raak het goede ${W.monster}! ${W.monsterIcon}` : 'Kies het goede antwoord 👇';
+      fit(ctx, t, 920, tall ? 60 : 48, 800); ctx.fillText(t, 512, L[3]);
     } else {
-      ctx.fillStyle = fb.good ? '#5cf0a0' : '#ff9a9d'; fit(ctx, fb.title, 920, 48, 900); ctx.fillText(fb.title, 512, 368);
+      ctx.fillStyle = fb.good ? '#5cf0a0' : '#ff9a9d';
+      const ft = fitLines(ctx, fb.title, 920, tall ? 2 : 1, tall ? 60 : 50, 900, 30);
+      ft.lines.forEach((l, i) => ctx.fillText(l, 512, L[4] + i * ft.size * 1.15));
       ctx.fillStyle = C.tip;
       const line = d.tip ? '💡 ' + d.tip : (toWord ? `Het woord is: ${d.word}` : `${d.word} = ${d.meaning}`);
-      const f = fitLines(ctx, line, 900, 3, 38, 700, 22);
-      f.lines.forEach((l, i) => ctx.fillText(l, 512, 420 + i * f.size * 1.15));
+      // long tips get smaller letters so they stay above the bottom edge of the panel
+      const y0 = L[5] + (ft.lines.length - 1) * ft.size * 1.15, room = c.height - 34 - y0;
+      let size = tall ? 54 : 42, f;
+      do { f = fitLines(ctx, line, 920, 4, size, 700, 20); size = f.size - 2; } while ((f.lines.length - 1) * f.size * 1.15 + f.size * 0.3 > room && size >= 20);
+      f.lines.forEach((l, i) => ctx.fillText(l, 512, y0 + i * f.size * 1.15));
     }
     Q.update();
   }
@@ -290,8 +520,10 @@ function start() {
     ctx.closePath(); ctx.fillStyle = filled ? C.accent : 'rgba(255,255,255,0.12)'; ctx.fill();
     ctx.lineWidth = 5; ctx.strokeStyle = filled ? C.accentLight : 'rgba(255,255,255,0.35)'; ctx.stroke();
   }
-  function drawEnd(newBest, newTime, secs, lost) {
+  function drawEnd(newBest, newTime, secs, lost, progress) {
+    lastEnd = [newBest, newTime, secs, lost, progress];
     const { ctx, c } = Q; panelBg(ctx, c, 44);
+    if (tall) { drawEndTall(newBest, newTime, secs, lost, progress); return; }
     if (lost) {
       ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
       ctx.fillStyle = '#ff9a9d'; ctx.font = `900 84px ${FONT}`; ctx.fillText(W.caught, 512, 110);
@@ -305,14 +537,49 @@ function start() {
     ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
     ctx.fillStyle = C.accent; ctx.font = `900 84px ${FONT}`; ctx.fillText('Klaar! 🎉', 512, 100);
     [362, 512, 662].forEach((x, i) => starShape(ctx, x, 180, 46, i < stars));
-    ctx.fillStyle = '#ffffff'; ctx.font = `800 46px ${FONT}`; ctx.fillText(`${firstRight} van ${total} meteen goed`, 512, 285);
-    ctx.fillStyle = newTime ? '#5cf0a0' : '#ffffff'; ctx.font = `900 46px ${FONT}`;
-    const bt = bestTime(mode);
+    ctx.fillStyle = '#ffffff'; ctx.font = `800 50px ${FONT}`; ctx.fillText(`${firstRight} van ${total} meteen goed`, 512, 285);
+    ctx.fillStyle = newTime ? '#5cf0a0' : '#ffffff'; ctx.font = `900 48px ${FONT}`;
+    const bt = endBestTime;
     ctx.fillText(newTime ? `⏱ ${fmtTime(secs)}, nieuwe snelste tijd! 🏆` : `⏱ ${fmtTime(secs)} (snelste: ${fmtTime(bt)})`, 512, 350);
-    ctx.fillStyle = C.muted; ctx.font = `700 38px ${FONT}`;
-    ctx.fillText(newBest ? `${score} punten, nieuw record!` : `${score} punten (beste: ${best})`, 512, 410);
+    // what to practise next (the points are on the score bar)
+    ctx.fillStyle = C.muted;
+    const tf = fitLines(ctx, '💡 ' + planTip(), 940, 2, 38, 800, 28);
+    tf.lines.forEach((l, i) => ctx.fillText(l, 512, (tf.lines.length > 1 ? 398 : 412) + i * tf.size * 1.12));
     ctx.fillStyle = C.text; ctx.font = `700 36px ${FONT}`;
-    ctx.fillText(newTime ? 'Wauw, sneller dan ooit!' : stars === 3 ? 'Alles goed! Lukt het nog sneller?' : 'Goed geoefend! Nog een keer?', 512, 470);
+    const cheer = newTime ? 'Wauw, sneller dan ooit!' : stars === 3 ? 'Alles goed! Lukt het nog sneller?' : 'Goed geoefend! Nog een keer?';
+    const line = progress && progress.line ? progress.line : cheer;
+    if (progress && progress.line) ctx.fillStyle = '#5cf0a0';
+    fit(ctx, line, 920, 40, 800); ctx.fillText(line, 512, 482);
+    if (progress) drawProgress(ctx, 740, 28, 250, 230, progress.history, { font: FONT, muted: C.muted, accent: C.accent, line: C.line });
+    Q.update();
+  }
+  // phone: everything under each other, the progress chart at the bottom
+  function drawEndTall(newBest, newTime, secs, lost, progress) {
+    const { ctx } = Q, mw = 950;
+    const line = (txt, y, size, weight) => { fit(ctx, txt, mw, size, weight); ctx.fillText(txt, 512, y); };
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    if (lost) {
+      ctx.fillStyle = '#ff9a9d'; line(W.caught, 170, 100, 900);
+      ctx.fillStyle = '#ffffff'; line(`${solved} van ${total} vragen gehaald`, 320, 60, 800);
+      ctx.fillStyle = C.muted; line(`${score} punten`, 410, 54, 800);
+      ctx.fillStyle = C.text; line(W.tooFast, 550, 52, 800); line('Probeer het nog eens!', 620, 52, 800);
+      Q.update(); return;
+    }
+    const stars = firstRight === total ? 3 : firstRight >= Math.ceil(total * 0.75) ? 2 : 1, bt = endBestTime;
+    ctx.fillStyle = C.accent; line('Klaar! 🎉', 120, 110, 900);
+    [342, 512, 682].forEach((x, i) => starShape(ctx, x, 225, 58, i < stars));
+    ctx.fillStyle = '#ffffff'; line(`${firstRight} van ${total} meteen goed`, 360, 60, 800);
+    ctx.fillStyle = newTime ? '#5cf0a0' : '#ffffff';
+    line(newTime ? `⏱ ${fmtTime(secs)}, nieuwe snelste tijd! 🏆` : `⏱ ${fmtTime(secs)} (snelste: ${fmtTime(bt)})`, 438, 56, 900);
+    ctx.fillStyle = C.muted;
+    const tf = fitLines(ctx, '💡 ' + planTip(), mw, 2, 44, 800, 30);
+    tf.lines.forEach((l, i) => ctx.fillText(l, 512, (tf.lines.length > 1 ? 492 : 508) + i * tf.size * 1.15));
+    const cheer = newTime ? 'Wauw, sneller dan ooit!' : stars === 3 ? 'Alles goed! Lukt het nog sneller?' : 'Goed geoefend! Nog een keer?';
+    const msg = progress && progress.line ? progress.line : cheer;
+    ctx.fillStyle = progress && progress.line ? '#5cf0a0' : C.text;
+    const f = fitLines(ctx, msg, mw, 2, 52, 800, 36);
+    f.lines.forEach((l, i) => ctx.fillText(l, 512, 585 + i * f.size * 1.18));
+    if (progress) drawProgress(ctx, 160, 685, 704, 225, progress.history, { font: FONT, muted: C.muted, accent: C.accent, line: C.line });
     Q.update();
   }
 
@@ -331,15 +598,73 @@ function start() {
 
   // ---------- game logic ----------
   const TYPE_MAP = { 'word-to-meaning': 'w2b', 'meaning-to-word': 'b2w' };
+  let seenWords = new Set(), missedWords = new Set();
   let phase = 'start', queue = [], cur = -1, curDir = 'w2b', curId = 0, options = [], wrongOnce = new Set(), total = 0;
   let score = 0, streak = 0, solved = 0, firstRight = 0, locked = false, waitBtn = null;
   let mode = 'calm', hearts = 0, requeued = false, waitCreature = null;
   function setLayout() {
-    const mon = mode === 'monsters' && phase === 'question';
-    Q.mesh.position.set(0, mon ? 2.6 : 2.1, Z); Q.mesh.scale.setScalar(mon ? 0.85 : 1);
-    S.mesh.position.set(0, mon ? 3.08 : 2.66, Z);
-    homeBtn.mesh.position.set(-0.62, mon ? 3.25 : 2.82, Z + 0.08); homeBtn.draw(phase === 'start' ? '🏠 Alle spellen' : '🏠 Start', 'idle');
+    place();
     if (!renderer.xr.isPresenting) resize();
+  }
+  const at = (obj, x, y, sc, dz) => { obj.mesh.position.set(x, y, Z + (dz || 0)); obj.mesh.quaternion.identity(); obj.base = sc; obj.mesh.scale.setScalar(sc); };
+  // puts every panel and button where it belongs for the current layout and screen
+  function place() {
+    const mon = mode === 'monsters' && phase === 'question';
+    if (!tall) {
+      at(Q, 0, mon ? 2.6 : 2.1, mon ? 0.85 : 1);
+      at(S, 0, mon ? 3.08 : 2.66, 1);
+      at(homeBtn, -0.62, mon ? 3.25 : 2.82, 1, 0.08);
+      [[-0.46, 1.38], [0.46, 1.38], [-0.46, 0.99], [0.46, 0.99]].forEach(([x, y], i) => at(answerBtns[i], x, y, 1, 0.08));
+      // start screen from top to bottom: subject, parts, how to play
+      at(prevBtn, -0.78, 1.47, 1, 0.08); at(nextBtn, 0.78, 1.47, 1, 0.08); at(listLabel, 0, 1.47, 1, 0.08);
+      partBtns.forEach((b, i) => at(b, (i - (PARTS.length - 1) / 2) * 0.47, 1.2, 1, 0.08));
+      at(calmBtn, -0.51, 0.9, 1, 0.08); at(monBtn, 0.51, 0.9, 1, 0.08);
+    } else {
+      at(Q, 0, mon ? 3.0 : 2.43, mon ? 0.8 : 1);
+      at(S, 0, mon ? 3.55 : 3.02, 0.72);
+      at(homeBtn, -0.3, mon ? 3.7 : 3.17, 0.9, 0.08);
+      answerBtns.forEach((b, i) => at(b, 0, 1.75 - i * 0.29, 1, 0.08));
+      at(prevBtn, -0.45, 1.8, 0.8, 0.08); at(nextBtn, 0.45, 1.8, 0.8, 0.08); at(listLabel, 0, 1.8, 0.56, 0.08);
+      partBtns.forEach((b, i) => at(b, (i - (PARTS.length - 1) / 2) * 0.4, 1.53, 0.8, 0.08));
+      at(calmBtn, 0, 1.24, 0.9, 0.08); at(monBtn, 0, 0.94, 0.9, 0.08);
+    }
+    if (mon && !renderer.xr.isPresenting) placeHud();
+    homeBtn.draw(phase === 'start' ? '🏠 Alle spellen' : '🏠 Start', 'idle');
+  }
+  // Monsters (not in VR): the panel, score and home button hang just in front of the camera at the top of
+  // the screen (like a sticker on the glass), so the panel stays big while the monsters walk in below it.
+  let hudBottom = 0;
+  function placeHud() {
+    const D = 1.0, viewH = 2 * D * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)), viewW = viewH * camera.aspect;
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion), up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    const put = (obj, x, y, sc) => {
+      obj.mesh.position.copy(camera.position).addScaledVector(right, x).addScaledVector(up, y).addScaledVector(fwd, D);
+      obj.mesh.quaternion.copy(camera.quaternion); obj.base = sc; obj.mesh.scale.setScalar(sc);
+    };
+    const [PW, PH] = tall ? [1.1, 1.0] : [1.8, 0.9];
+    const pw = Math.min(0.9 * viewW, 0.42 * viewH * PW / PH), ps = pw / PW, ph = PH * ps;   // the panel
+    const sw = pw * 0.72, ss = sw / 1.5, hw = pw * 0.25, hs = hw / 0.5;  // score bar and home button
+    const top = viewH / 2 - 0.012 * viewH, rowH = Math.max(0.19 * ss, 0.12 * hs), gap = 0.008 * viewH;
+    put(homeBtn, -pw / 2 + hw / 2, top - rowH / 2, hs);
+    put(S, pw / 2 - sw / 2, top - rowH / 2, ss);
+    const py = top - rowH - gap - ph / 2;
+    put(Q, 0, py, ps);
+    hudBottom = (py - ph / 2) / (viewH / 2);   // in screen units (-1 bottom … 1 top), for the camera tilt
+  }
+  // the layout follows the screen: tall on a phone held upright, wide everywhere else (and always in VR)
+  function checkLayout() {
+    const t = !renderer.xr.isPresenting && camera.aspect < 0.9;
+    if (Q && t === tall) return;
+    tall = t; buildPanel();
+    // answers: 2 × 2 with up to 5 lines (wide), or full-width under each other with up to 3 lines (tall)
+    answerBtns.forEach(b => tall ? reshapeButton(b, 1.1, 0.27, 1024, 4) : reshapeButton(b, 0.88, 0.37, 768, 5));
+    place(); redraw();
+  }
+  function redraw() {
+    if (phase === 'start') drawStart();
+    else if (phase === 'question' && cur >= 0) drawQuestion(lastFb);
+    else if (phase === 'end' && lastEnd) drawEnd(...lastEnd);
   }
   const sheetMode = () => mode === 'calm' ? 'rustig' : mode;   // the sheet keeps its Dutch values
   const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
@@ -359,6 +684,7 @@ function start() {
     S.mesh.visible = false; setLayout(); drawStart();
   }
   function newGame(m) {
+    note.hidden = true;   // the 'how to play' hint has done its job once a game starts
     mode = m === 'monsters' ? 'monsters' : 'calm';
     hearts = Math.max(1, Math.round(Number(LIVES) || 3));
     logGame('spel-gestart', { l: listName(), m: sheetMode() });
@@ -373,6 +699,7 @@ function start() {
       order.push(...round);
     }
     queue = order.slice(0, total).map((i, id) => ({ id, i, dir: pool[Math.floor(Math.random() * pool.length)] }));
+    seenWords = new Set(); missedWords = new Set();
     wrongOnce = new Set(); score = 0; streak = 0; solved = 0; firstRight = 0; locked = false; waitBtn = null;
     phase = 'question'; showModeButtons(false); S.mesh.visible = true; setLayout();
     startedAt = performance.now(); endedAt = 0; lastShownSec = -1;
@@ -380,7 +707,7 @@ function start() {
   }
   function nextQuestion() {
     if (!queue.length) return endGame();
-    const item = queue.shift(); cur = item.i; curDir = item.dir; curId = item.id;
+    const item = queue.shift(); cur = item.i; curDir = item.dir; curId = item.id; seenWords.add(cur);
     const others = shuffle(DATA.map((_, i) => i).filter(i => i !== cur)).slice(0, NOPT - 1);
     options = shuffle([cur, ...others]);
     requeued = false; waitCreature = null;
@@ -411,7 +738,7 @@ function start() {
       sfx('good'); buzz(0.5, 80); burst(btn.mesh);
       later(nextQuestion, 2000);
     } else {
-      streak = 0; wrongOnce.add(curId);
+      streak = 0; wrongOnce.add(curId); missedWords.add(cur);
       queue.splice(Math.min(2, queue.length), 0, { id: curId, i: cur, dir: curDir });
       answerBtns.forEach((b, i) => { if (i < options.length) b.draw(label(options[i]), b === btn ? 'bad' : b === correctBtn ? 'good' : 'dim'); });
       drawQuestion({ good: false, title: 'Oeps! Het goede antwoord is groen. Kies de groene knop.' }); drawScore();
@@ -424,13 +751,19 @@ function start() {
     const secs = elapsed();
     logGame(lost ? 'spel-verloren' : 'spel-klaar', { l: listName(), m: sheetMode(), goed: lost ? solved : firstRight, n: total, t: secs });
     phase = 'end';
+    recordPlan(mode, lost ? solved : firstRight, total, lost, seenWords, missedWords);
     let newBest = false, newTime = false;
     if (score > best) { best = score; newBest = true; try { localStorage.setItem(listKey() + '-score', String(best)); } catch (e) {} }
     const bt = bestTime(mode);
     if (!lost && (!bt || secs < bt)) { newTime = true; try { localStorage.setItem(timeKey(mode), String(secs)); } catch (e) {} }
+    // only finished games count for the progress chart (not being caught by the monsters)
+    const progress = lost ? null : recordResult(timeKey(mode), { good: firstRight, n: total, secs, score });
     answerBtns.forEach(b => b.mesh.visible = false);
     clearCreatures(); showModeButtons(true); setLayout();
-    drawEnd(newBest, newTime, secs, lost); drawScore();
+    endBestTime = bestTime(mode);
+    drawEnd(newBest, newTime, secs, lost, progress); drawScore();
+    // the next game: the parts the plan suggests now are selected
+    pickSuggested(); showModeButtons(true); place();
     if (lost) { sfx('bad'); return; }
     sfx('win'); if (firstRight >= Math.ceil(total * 0.75)) { burst(Q.mesh); setTimeout(() => burst(Q.mesh), 300); }
   }
@@ -444,7 +777,10 @@ function start() {
     ctx.fillStyle = bg; rr(ctx, 6, 6, c.width - 12, c.height - 12, 30); ctx.fill();
     ctx.strokeStyle = edge; ctx.lineWidth = 10; ctx.stroke();
     ctx.fillStyle = fg; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    const f = fitLines(ctx, cr.text, c.width - 80, 6, 120, 800, 40), lh = f.size * 1.12, y0 = c.height / 2 - (f.lines.length - 1) * lh / 2;
+    // long texts get smaller letters until all lines fit on the sign
+    let size = 120, f;
+    do { f = fitLines(ctx, cr.text, c.width - 80, 6, size, 800, 40); size = f.size - 4; } while (f.lines.length * f.size * 1.12 > c.height - 50 && size >= 40);
+    const lh = f.size * 1.12, y0 = c.height / 2 - (f.lines.length - 1) * lh / 2;
     f.lines.forEach((l, i) => ctx.fillText(l, c.width / 2, y0 + i * lh));
     cr.sign.update();
   }
@@ -463,7 +799,21 @@ function start() {
   // signs are big while far away and shrink as they come closer, never wider than the space between two monsters;
   // when they still don't fit side by side, every other sign moves up so they don't cover each other
   const SIGN_W = 1.3, SIGN_H = 0.8;
+  // phone: the monsters walk in two columns, two per column: one in front with the lower sign and one
+  // a bit further back (and more to the side) with the higher sign. Each keeps its place on the screen
+  // (walking straight at the camera), so the signs form a 2 × 2 grid and can be almost half the screen wide.
+  const PHONE_SIGN = 0.45, PHONE_BACK = 0.8;   // sign width as part of the screen width; how far back the second row walks
+  const phoneSignScale = depth => PHONE_SIGN * 2 * depth * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect / SIGN_W;
   function placeCreature(cr) {
+    if (tall) {
+      const row = cr.slot >= 2 ? 1 : 0, side = cr.slot % 2 ? 1 : -1, back = row * PHONE_BACK;
+      const depth = camera.position.z + cr.r + back, halfW = depth * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect;
+      const x = side * (row ? 0.62 : 0.38) * halfW, s = phoneSignScale(depth);
+      cr.g.position.set(x, -(cr.sink || 0), -(cr.r + back)); cr.g.rotation.y = Math.atan2(-x, depth);
+      cr.sign.mesh.scale.set(s, s, 1); cr.sign.mesh.position.x = side * 0.5 * halfW - x;   // the sign sits in its column
+      cr.sign.mesh.position.y = 1.38 + SIGN_H * s / 2 + row * SIGN_H * s * 1.06;
+      return;
+    }
     const x = Math.sin(cr.angle) * cr.r, z = -Math.cos(cr.angle) * cr.r;
     cr.g.position.set(x, -(cr.sink || 0), z); cr.g.rotation.y = Math.atan2(-x, -z);
     const room = 2 * cr.r * Math.sin(cr.gap / 2) * 0.95 / SIGN_W;
@@ -490,7 +840,7 @@ function start() {
       placeCreature(cr); ui.add(cr.g); creatures.push(cr);
     });
   }
-  // melting: the snowman sinks into the snow, droops a little, its sign tips over and a puddle spreads out
+  // melting (or crumbling, see themeCrumble): the snowman sinks into the snow, droops a little, its sign tips over and a puddle spreads out
   const puddles = [];
   const puddleGeo = new THREE.CircleGeometry(0.4, 28);
   function meltOthers(keep) {
@@ -498,12 +848,14 @@ function start() {
       if (cr === keep || !cr.alive) return;
       cr.alive = false; cr.state = 'melt'; cr.melt = 0; cr.sink = 0;
       cr.sign.mesh.material.transparent = true;
+      if (C.defeat === 'crumble') { themeCrumble(THREE, ui, cr.body); cr.body.visible = false; cr.crumble = true; return; }
       const pd = new THREE.Mesh(puddleGeo, new THREE.MeshBasicMaterial({ color: C.puddle, transparent: true, opacity: 0.75, depthWrite: false }));
       pd.rotation.x = -Math.PI / 2; pd.position.set(cr.g.position.x, 0.012, cr.g.position.z); pd.scale.setScalar(0.2);
       ui.add(pd); puddles.push({ m: pd, t: 0 });
     });
   }
   function updatePuddles(dt) {
+    themeUpdateShards(dt);
     for (let i = puddles.length - 1; i >= 0; i--) {
       const p = puddles[i]; p.t += dt;
       p.m.scale.setScalar(0.2 + Math.min(1, p.t / 1.1) * 1.1);
@@ -511,10 +863,15 @@ function start() {
       if (p.t > 2.7) { ui.remove(p.m); p.m.material.dispose(); puddles.splice(i, 1); }
     }
   }
+  // the monster that was hit: gone in a puff, or (gingerbread) blown to pieces
+  function hitGone(cr) {
+    if (C.defeat === 'crumble') themeCrumble(THREE, ui, cr.body, 1.8);
+    cr.alive = false; cr.state = 'gone'; cr.g.visible = false;
+  }
   function shootCreature(cr, point) {
     if (phase !== 'question' || mode !== 'monsters' || !cr.alive) return;
     if (waitCreature) {
-      if (cr === waitCreature) { cr.alive = false; cr.g.visible = false; snowPuff(point || cr.g.position); sfx('click'); nextQuestion(); }
+      if (cr === waitCreature) { hitGone(cr); snowPuff(point || cr.g.position); sfx('click'); nextQuestion(); }
       return;
     }
     if (locked) return;
@@ -524,7 +881,7 @@ function start() {
       const retry = requeued;
       const first = !wrongOnce.has(curId), gain = retry ? 0 : first ? 10 + Math.min(streak, 5) * 2 : 5;
       if (!retry) { score += gain; streak++; solved++; if (first) firstRight++; }
-      cr.alive = false; cr.state = 'gone'; cr.g.visible = false;
+      hitGone(cr);
       const p = new THREE.Vector3(); cr.sign.mesh.getWorldPosition(p);
       burst(p); snowPuff(p); snowPuff(cr.g.localToWorld(new THREE.Vector3(0, 0.8, 0)));
       meltOthers(null);
@@ -532,7 +889,7 @@ function start() {
       sfx('good'); buzz(0.6, 90);
       later(nextQuestion, 1900);
     } else {
-      streak = 0; wrongOnce.add(curId);
+      streak = 0; wrongOnce.add(curId); missedWords.add(cur);
       // keep throwing until you hit the right one; the question comes back once, 2 questions later
       if (!requeued) { requeued = true; queue.splice(Math.min(2, queue.length), 0, { id: curId, i: cur, dir: curDir }); }
       drawSign(cr, 'bad'); cr.r = Math.max(1.0, cr.r - 0.8); cr.hitShake = 0.5; placeCreature(cr);
@@ -541,7 +898,7 @@ function start() {
     }
   }
   function creatureReached() {
-    locked = true; streak = 0; wrongOnce.add(curId); hearts--;
+    locked = true; streak = 0; wrongOnce.add(curId); missedWords.add(cur); hearts--;
     sfx('boing'); buzz(1, 300);
     const good = creatures.find(cr => cr.opt === cur);
     meltOthers(good);
@@ -566,9 +923,11 @@ function start() {
         const s = 1.04 + Math.sin(t * 7) * 0.04; cr.g.scale.set(s, s, s);
       } else if (cr.state === 'melt') {
         cr.melt += dt / 1.1; const e = Math.min(1, cr.melt), ease = e * e;
-        cr.sink = ease * 1.45;                                   // slides down into the snow
-        cr.body.rotation.x = -e * 0.35;                          // droops forward a bit
-        cr.body.scale.setScalar(1 - e * 0.25);
+        if (!cr.crumble) {   // pieces fly off by themselves (themeCrumble)
+          cr.sink = ease * 1.45;                                   // slides down into the snow
+          cr.body.rotation.x = -e * 0.35;                          // droops forward a bit
+          cr.body.scale.setScalar(1 - e * 0.25);
+        }
         cr.sign.mesh.rotation.x = -e * 1.2;                      // sign tips over
         cr.sign.mesh.material.opacity = 1 - e;
         if (cr.melt >= 1) { cr.state = 'gone'; cr.g.visible = false; }
@@ -711,8 +1070,8 @@ function start() {
     const isHeadset = /OculusBrowser|Quest|Pico|Wolvic/i.test(navigator.userAgent);
     let ok = false;
     if (isHeadset) { try { ok = !!(navigator.xr && await navigator.xr.isSessionSupported('immersive-vr')); } catch (e) {} }
-    if (ok) { vrBtn.hidden = false; note.textContent = `Druk op "Speel in VR". Richt op een antwoord en gooi een ${W.ball} met de trekker.`; }
-    else { vrBtn.hidden = true; note.textContent = 'Klik of tik op een antwoord om te spelen.'; }
+    if (ok) { vrBtn.hidden = false; note.hidden = false; note.textContent = `Druk op "Speel in VR". Richt op een antwoord en gooi een ${W.ball} met de trekker.`; }
+    else vrBtn.hidden = true;   // no VR: nothing to explain, kids know how to tap
   }
   vrBtn.addEventListener('click', async () => {
     ensureAudio();
@@ -721,21 +1080,42 @@ function start() {
       const s = await navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking'] });
       s.addEventListener('end', () => { session = null; vrBtn.textContent = '🥽 Speel in VR'; ui.position.set(0, 0, 0); ui.rotation.set(0, 0, 0); resize(); });
       await renderer.xr.setSession(s);
-      session = s; needsPlace = true; vrBtn.textContent = 'Stop VR';
-    } catch (e) { note.textContent = 'VR start niet. Open deze pagina direct in de Meta Quest-browser.'; }
+      session = s; needsPlace = true; vrBtn.textContent = 'Stop VR'; checkLayout(); place();
+    } catch (e) { note.hidden = false; note.textContent = 'VR start niet. Open deze pagina direct in de Meta Quest-browser.'; }
   });
 
   // ---------- layout / loop ----------
+  // a phone held sideways gets "Draai je telefoon rechtop" (tablets, computers and VR don't)
+  const turnEl = document.getElementById('turn');
+  function checkTurn() {
+    const phone = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 600;
+    turnEl.hidden = !(phone && innerWidth > innerHeight && !renderer.xr.isPresenting);
+  }
   function resize() {
+    checkTurn();
     const w = app.clientWidth, h = app.clientHeight;
     renderer.setSize(w, h, false); camera.aspect = w / h;
+    checkLayout();
     const tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
     if (mode === 'monsters' && phase === 'question') {
       const dist = Math.max(3.6, 0.9 / (tanHalf * camera.aspect));
-      camera.position.set(0, 1.7, Z + dist); camera.lookAt(0, 1.55, Z - 1.6); camera.updateProjectionMatrix(); return;
+      camera.position.set(0, 1.7, Z + dist);
+      // the panel covers the top of the screen; tilt the camera up so the top of the
+      // highest sign of a monster that's still far away (7 m) shows just under the panel
+      camera.updateProjectionMatrix(); camera.lookAt(0, 1.7, Z - 10); placeHud();
+      const far = Z + dist + 7 + (tall ? PHONE_BACK : 0), top = 1.38 + SIGN_H * (tall ? phoneSignScale(far) * 2.06 : 1.55);
+      const elev = Math.atan2(top - 1.7, far), want = Math.atan((hudBottom - 0.03) * tanHalf);
+      camera.lookAt(0, 1.7 + Math.tan(elev - want) * 10, Z + dist - 10); camera.updateProjectionMatrix();
+      placeHud(); return;
     }
-    const dist = Math.max((2.25 / 2) / tanHalf, (2.0 / 2) / (tanHalf * camera.aspect));
-    camera.position.set(0, 1.74, Z + dist); camera.lookAt(0, 1.76, Z); camera.updateProjectionMatrix();
+    if (tall) {
+      // phone: from the lowest button up to the home button, 1.16 m wide
+      const lo = phase === 'question' ? 0.6 : 0.76, hi = 3.32, mid = (lo + hi) / 2;
+      const d = Math.max(((hi - lo) / 2) / tanHalf, (1.16 / 2) / (tanHalf * camera.aspect));
+      camera.position.set(0, mid, Z + d); camera.lookAt(0, mid, Z); camera.updateProjectionMatrix(); return;
+    }
+    const dist = Math.max((2.35 / 2) / tanHalf, (1.9 / 2) / (tanHalf * camera.aspect));
+    camera.position.set(0, 1.82, Z + dist); camera.lookAt(0, 1.84, Z); camera.updateProjectionMatrix();
   }
   window.addEventListener('resize', () => { if (!renderer.xr.isPresenting) resize(); });
   resize();
@@ -769,6 +1149,7 @@ function start() {
       const b = m.userData.btn;
       let target = hovered.has(m) && b.state !== 'dim' && !locked ? 1.04 : 1;
       if (b === waitBtn) target = 1.03 + Math.sin(t * 7) * 0.025;
+      target *= b.base;
       const s = m.scale.x + (target - m.scale.x) * Math.min(1, dt * 14); m.scale.set(s, s, 1);
     });
     for (let i = parts.length - 1; i >= 0; i--) {
@@ -784,7 +1165,7 @@ function start() {
     renderer.render(scene, camera);
   });
 
-  startList();
+  startSubject();
   showStart();
   setupVR();
 }

@@ -69,6 +69,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="settings.js"></script>
 <script src="themes.js"></script>
+<script src="progress.js"></script>
 <script src="traffic-content.js"></script>
 <script>
 /* Visits and results go to your Google Sheet (tab 'verkeer'); the link is in settings.js.
@@ -2764,7 +2765,7 @@ function start() {
       ctx.fillStyle = C.tip; const f = fitLines(ctx, fb.text, 920, 5, 46, 700, 28); drawLines(ctx, f, 512, 365, f.size * 1.18);
       Q.update(); return;
     }
-    if (storyTxt) { ctx.fillStyle = C.muted; const f = fitLines(ctx, storyTxt, 920, 2, 34, 700, 20); drawLines(ctx, f, 512, 62, f.size * 1.15); }
+    if (storyTxt) { ctx.fillStyle = C.muted; const f = fitLines(ctx, storyTxt, 930, 2, 40, 800, 20); drawLines(ctx, f, 512, 62, f.size * 1.15); }
     const qy = storyTxt ? 205 : 165; ctx.fillStyle = '#ffffff';
     if (q.sign && SIGN_DRAW[q.sign]) {
       drawSign(ctx, q.sign, 135, qy, 78);
@@ -2772,10 +2773,10 @@ function start() {
     } else { const f = fitLines(ctx, q.question, 920, 3, 48, 800, 22); drawLines(ctx, f, 512, qy, f.size * 1.16); }
     ctx.strokeStyle = C.line; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(60, 312); ctx.lineTo(964, 312); ctx.stroke();
     ctx.textAlign = 'center';
-    if (!fb) { ctx.fillStyle = C.text; ctx.font = `700 40px ${FONT}`; ctx.fillText(hint || 'Kies de weg met het goede antwoord 👇', 512, 400); }
+    if (!fb) { ctx.fillStyle = C.text; const t = hint || 'Kies de weg met het goede antwoord 👇'; fit(ctx, t, 930, 48, 800); ctx.fillText(t, 512, 400); }
     else {
       ctx.fillStyle = fb.color || (fb.good ? '#5cf0a0' : '#ff9a9d'); fit(ctx, fb.title, 920, 48, 900); ctx.fillText(fb.title, 512, fb.text ? 355 : 400);
-      if (fb.text) { ctx.fillStyle = C.tip; const f = fitLines(ctx, fb.text, 900, 3, 36, 700, 20); drawLines(ctx, f, 512, 440, f.size * 1.15); }
+      if (fb.text) { ctx.fillStyle = C.tip; const f = fitLines(ctx, fb.text, 930, 3, 42, 800, 20); drawLines(ctx, f, 512, 440, f.size * 1.15); }
     }
     Q.update();
   }
@@ -2783,7 +2784,7 @@ function start() {
     const { ctx, c } = Q; panelBg(ctx, c, 44);
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillStyle = col || C.accent; let f = fitLines(ctx, title, 920, 2, 72, 900, 30); drawLines(ctx, f, 512, text ? 110 : 256, f.size * 1.15);
-    if (text) { ctx.fillStyle = C.tip; f = fitLines(ctx, text, 900, 5, 40, 700, 22); drawLines(ctx, f, 512, 340, f.size * 1.18); }
+    if (text) { ctx.fillStyle = C.tip; f = fitLines(ctx, text, 930, 5, 46, 800, 22); drawLines(ctx, f, 512, 340, f.size * 1.18); }
     Q.update();
   }
   function drawPrizePanel(arrived) {
@@ -2791,8 +2792,8 @@ function start() {
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#ffffff';
     ctx.font = `110px ${FONT}`; ctx.fillText(P.emoji || '🏆', 512, 130);
     ctx.fillStyle = C.accent; const t = arrived ? (P.text || 'Je bent er!') : 'Bijna bij de finish…'; fit(ctx, t, 920, 72, 900); ctx.fillText(t, 512, 270);
-    if (arrived) { ctx.fillStyle = C.text; ctx.font = `700 40px ${FONT}`; ctx.fillText('Je hebt de hele route gereden! 🏆', 512, 370); }
-    if (arrived && placeActs.length) { ctx.fillStyle = C.tip; ctx.font = `800 40px ${FONT}`; ctx.fillText('Tik op iets om te gaan spelen! 👆', 512, 445); }
+    if (arrived) { ctx.fillStyle = C.text; ctx.font = `800 48px ${FONT}`; ctx.fillText('Je hebt de hele route gereden! 🏆', 512, 370); }
+    if (arrived && placeActs.length) { ctx.fillStyle = C.tip; ctx.font = `800 48px ${FONT}`; ctx.fillText('Tik op iets om te gaan spelen! 👆', 512, 445); }
     Q.update();
   }
 
@@ -2889,18 +2890,18 @@ function start() {
     placeQ(1.95, 1); Q.mesh.visible = true;
     const L = LVLS[i], { ctx, c } = Q; panelBg(ctx, c, 44);
     ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = C.muted; ctx.font = `800 40px ${FONT}`; ctx.fillText(`Level ${i + 1}`, 512, 70);
+    ctx.fillStyle = C.muted; ctx.font = `800 46px ${FONT}`; ctx.fillText(`Level ${i + 1}`, 512, 70);
     ctx.fillStyle = C.accent; fit(ctx, L.title, 900, 84, 900); ctx.fillText(L.title, 512, 150);
     ctx.fillStyle = '#ffffff'; ctx.textBaseline = 'middle';
     const fams = L.kind === 'families' ? Object.keys(FAMS) : L.kind === 'signs' ? (L.families || Object.keys(FAMS)).filter(k => FAMS[k]) : [];
     if (fams.length) {   // sign levels: the explanation on top, the families as a chart below it
       const y0 = 488 - Math.min(248, fams.length * 90), txt = L.kind === 'families' ? (L.explanation || '').split('\n')[0] : (L.explanation || '');
-      const f = fitLines(ctx, txt, 920, Math.max(1, Math.floor((y0 - 185) / 44)), 36, 700, 22); drawLines(ctx, f, 512, (185 + y0) / 2, f.size * 1.2);
+      const f = fitLines(ctx, txt, 930, Math.max(1, Math.floor((y0 - 185) / 48)), 42, 800, 22); drawLines(ctx, f, 512, (185 + y0) / 2, f.size * 1.2);
       drawFamChart(ctx, fams, 60, 964, y0, 488, false, L.kind === 'families');
     }
     const best = prog.times[L.id], showBest = !!starsOf(i) && !fams.length;
-    if (!fams.length) drawInBand(ctx, L.explanation || '', 512, 900, 185, showBest ? 436 : 488, 40, 700, 22);   // above the best score, if there is one
-    if (showBest) { ctx.fillStyle = C.muted; ctx.font = `700 32px ${FONT}`; ctx.fillText(`Jouw beste: ${starStr(starsOf(i))}${best ? '   ⏱ ' + fmtTime(best) : ''}`, 512, 470); }
+    if (!fams.length) drawInBand(ctx, L.explanation || '', 512, 930, 185, showBest ? 436 : 488, 46, 800, 22);   // above the best score, if there is one
+    if (showBest) { ctx.fillStyle = C.muted; ctx.font = `800 40px ${FONT}`; ctx.fillText(`Jouw beste: ${starStr(starsOf(i))}${best ? '   ⏱ ' + fmtTime(best) : ''}`, 512, 470); }
     Q.update();
     goBtn.mesh.visible = true; goBtn.draw('Start ▶', 'start');
     backBtn.mesh.visible = true; backBtn.draw('🗺 Kaart', 'idle'); backBtn.mesh.position.set(-0.75, 1.25, Z + 0.06); backBtn.onSelect = () => { sfx('click'); showMap(); };
@@ -2910,7 +2911,7 @@ function start() {
   // one row per family: name + what it means. Shape/colour only when withShape (the families intro): players have to learn those themselves
   // examples: a few of the family's signs between the name and the meaning (the Bordenwijzer)
   function drawFamChart(ctx, fams, x0, x1, y0, y1, big, withShape, examples) {
-    const rowH = (y1 - y0) / fams.length, fs = Math.min(big ? 38 : 34, rowH * 0.5);
+    const rowH = (y1 - y0) / fams.length, fs = Math.min(big ? 42 : 38, rowH * 0.52);
     const nameEnd = x0 + (x1 - x0) * (examples ? 0.27 : 0.42), r = rowH * 0.36, gap = r * 2.35;
     ctx.textBaseline = 'middle';
     fams.forEach((k, i) => {
@@ -2943,7 +2944,7 @@ function start() {
     const { ctx, c } = Q; panelBg(ctx, c, 44);
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillStyle = C.accent; ctx.font = `900 64px ${FONT}`; ctx.fillText('📖 Bordenwijzer', 512, 66);
-    ctx.fillStyle = C.muted; ctx.font = `700 30px ${FONT}`; ctx.fillText('Wat betekenen de namen? Met een paar voorbeelden.', 512, 122);
+    ctx.fillStyle = C.muted; fit(ctx, 'Wat betekenen de namen? Met een paar voorbeelden.', 930, 38, 800); ctx.fillText('Wat betekenen de namen? Met een paar voorbeelden.', 512, 122);
     drawFamChart(ctx, Object.keys(FAMS), 50, 974, 150, 490, true, false, true);
     Q.update();
     backBtn.mesh.visible = true; backBtn.draw(guideFrom === 'quiz' ? '◀ Terug naar de vraag' : '◀ Terug', 'idle');
@@ -3172,11 +3173,11 @@ function start() {
     }
     ctx.strokeStyle = C.line; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(60, 312); ctx.lineTo(964, 312); ctx.stroke();
     ctx.textAlign = 'center';
-    if (!fb) { ctx.fillStyle = C.text; ctx.font = `700 42px ${FONT}`; ctx.fillText('Kies het goede antwoord 👇', 512, 400); }
+    if (!fb) { ctx.fillStyle = C.text; ctx.font = `800 50px ${FONT}`; ctx.fillText('Kies het goede antwoord 👇', 512, 400); }
     else {
       ctx.fillStyle = fb.good ? '#5cf0a0' : '#ff9a9d'; fit(ctx, fb.title, 920, 48, 900); ctx.fillText(fb.title, 512, 355);
       ctx.fillStyle = C.tip;
-      const f = fitLines(ctx, q.explanation || ('Het goede antwoord is: ' + q.answers[q.correct]), 900, 3, 36, 700, 20); drawLines(ctx, f, 512, 440, f.size * 1.15);
+      const f = fitLines(ctx, q.explanation || ('Het goede antwoord is: ' + q.answers[q.correct]), 930, 3, 42, 800, 20); drawLines(ctx, f, 512, 440, f.size * 1.15);
     }
     Q.update();
   }
@@ -3187,22 +3188,22 @@ function start() {
     const { ctx, c } = Q, s = cur.sign; panelBg(ctx, c, 44);
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     if (cur.k === 'm2b') {
-      ctx.fillStyle = C.muted; ctx.font = `800 40px ${FONT}`; ctx.fillText('Welk bord betekent:', 512, 62);
+      ctx.fillStyle = C.muted; ctx.font = `800 48px ${FONT}`; ctx.fillText('Welk bord betekent:', 512, 62);
       ctx.fillStyle = C.accent; const f = fitLines(ctx, s.meaning, 900, 3, 58, 800, 26); drawLines(ctx, f, 512, 175, f.size * 1.15);
     } else {
       drawSign(ctx, s.id, 175, 170, 120);
-      ctx.textAlign = 'left'; ctx.fillStyle = C.muted; ctx.font = `800 42px ${FONT}`;
+      ctx.textAlign = 'left'; ctx.fillStyle = C.muted; ctx.font = `800 50px ${FONT}`;
       ctx.fillText(cur.k === 'family' ? 'Bij welke familie' : 'Wat betekent', 340, 130);
       ctx.fillText(cur.k === 'family' ? 'hoort dit bord?' : 'dit bord?', 340, 190);
     }
     ctx.strokeStyle = C.line; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(60, 312); ctx.lineTo(964, 312); ctx.stroke();
     ctx.textAlign = 'center';
-    if (!fb) { ctx.fillStyle = C.text; ctx.font = `700 42px ${FONT}`; ctx.fillText('Kies het goede antwoord 👇', 512, 400); }
+    if (!fb) { ctx.fillStyle = C.text; ctx.font = `800 50px ${FONT}`; ctx.fillText('Kies het goede antwoord 👇', 512, 400); }
     else {
       ctx.fillStyle = fb.good ? '#5cf0a0' : '#ff9a9d'; fit(ctx, fb.title, 920, 48, 900); ctx.fillText(fb.title, 512, 360);
       ctx.fillStyle = C.tip;
       const txt = cur.k === 'family' ? FAMS[s.family].hint : s.meaning;
-      const f = fitLines(ctx, txt, 900, 2, 38, 700, 22); drawLines(ctx, f, 512, 440, f.size * 1.15);
+      const f = fitLines(ctx, txt, 930, 2, 46, 800, 22); drawLines(ctx, f, 512, 440, f.size * 1.15);
     }
     Q.update();
   }
@@ -3210,19 +3211,21 @@ function start() {
     const { ctx, c } = Q; panelBg(ctx, c, 44);
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillStyle = C.accent; ctx.font = `900 80px ${FONT}`; ctx.fillText('Wie mag eerst?', 512, 90);
-    ctx.fillStyle = C.text; ctx.font = `700 40px ${FONT}`;
-    ctx.fillText(sitMode === 'arrive' ? 'Daar komen ze aan…' : sitMode === 'pick' ? `Tik ze aan in de volgorde waarin ze mogen gaan (${chosen.length}/${curSit.order.length})` : 'Kijk wat er gebeurt…', 512, 175);
+    ctx.fillStyle = C.text;
+    const sub = sitMode === 'arrive' ? 'Daar komen ze aan…' : sitMode === 'pick' ? `Tik ze aan in de volgorde waarin ze mogen gaan (${chosen.length}/${curSit.order.length})` : 'Kijk wat er gebeurt…';
+    fit(ctx, sub, 930, 48, 800); ctx.fillText(sub, 512, 175);
     ctx.strokeStyle = C.line; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(60, 235); ctx.lineTo(964, 235); ctx.stroke();
     if (!fb) {
-      ctx.fillStyle = C.muted; ctx.font = `700 36px ${FONT}`;
+      ctx.fillStyle = C.muted;
       const st = cur.stop ? story(cur.stop) : '';   // a crossing on a route tells its bit of the story
-      if (st) { const f = fitLines(ctx, st, 920, 2, 36, 700, 22); drawLines(ctx, f, 512, 300, f.size * 1.15); ctx.font = `700 36px ${FONT}`; }
-      else ctx.fillText('De gekleurde lijn laat zien waar iedereen heen wil.', 512, 310);
-      if (sitMode === 'pick' && chosen.length) ctx.fillText('Vergist? Tik nog eens op een nummer om het weg te halen.', 512, 370);
+      const one = (t, y) => { fit(ctx, t, 930, 42, 800); ctx.fillText(t, 512, y); };
+      if (st) { const f = fitLines(ctx, st, 930, 2, 42, 800, 22); drawLines(ctx, f, 512, 300, f.size * 1.15); }
+      else one('De gekleurde lijn laat zien waar iedereen heen wil.', 310);
+      if (sitMode === 'pick' && chosen.length) one('Vergist? Tik nog eens op een nummer om het weg te halen.', 375);
     }
     else {
       ctx.fillStyle = fb.good ? '#5cf0a0' : '#ff9a9d'; fit(ctx, fb.title, 920, 54, 900); ctx.fillText(fb.title, 512, 295);
-      if (fb.text) { ctx.fillStyle = C.tip; const f = fitLines(ctx, fb.text, 900, 4, 38, 700, 22); drawLines(ctx, f, 512, 410, f.size * 1.18); }
+      if (fb.text) { ctx.fillStyle = C.tip; const f = fitLines(ctx, fb.text, 930, 4, 42, 800, 22); drawLines(ctx, f, 512, 410, f.size * 1.16); }
     }
     Q.update();
   }
@@ -3253,20 +3256,24 @@ function start() {
     let newTime = false;
     if (passed && (!prog.times[L.id] || secs < prog.times[L.id])) { prog.times[L.id] = secs; newTime = true; }
     saveProg();
+    const progress = recordResult('traffic-' + L.id, { good: firstRight, n: total, secs, score });
     logGame(passed ? 'level-gehaald' : 'level-niet-gehaald', { l: L.id, goed: firstRight, n: total, t: secs, sterren: stars });
     phase = 'result'; hideAll(); clearSit(); drawTestMap();
     placeQ(2.0, 1); Q.mesh.visible = true;
     const { ctx, c } = Q; panelBg(ctx, c, 44);
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillStyle = passed ? C.accent : '#ff9a9d'; ctx.font = `900 84px ${FONT}`;
-    ctx.fillText(passed ? 'Level gehaald! 🎉' : 'Bijna!', 512, 90);
-    ctx.font = `900 110px ${FONT}`; ctx.fillStyle = C.accent; ctx.fillText(starStr(stars), 512, 205);
-    ctx.fillStyle = '#ffffff'; ctx.font = `800 46px ${FONT}`; ctx.fillText(`${firstRight} van ${total} in één keer goed`, 512, 310);
-    ctx.fillStyle = C.muted; ctx.font = `700 38px ${FONT}`;
-    ctx.fillText(`⏱ ${fmtTime(secs)}${newTime ? '  (snelste tijd!)' : ''}     ⭐ ${score} punten`, 512, 370);
-    ctx.fillStyle = C.text; ctx.font = `700 36px ${FONT}`;
+    ctx.fillText(passed ? 'Level gehaald! 🎉' : 'Bijna!', 512, 85);
+    ctx.font = `900 110px ${FONT}`; ctx.fillStyle = C.accent; ctx.fillText(starStr(stars), 512, 190);
+    ctx.fillStyle = '#ffffff'; ctx.font = `800 46px ${FONT}`; ctx.fillText(`${firstRight} van ${total} in één keer goed`, 512, 290);
+    ctx.fillStyle = C.muted; ctx.font = `800 42px ${FONT}`;
+    ctx.fillText(`⏱ ${fmtTime(secs)}${newTime ? '  (snelste tijd!)' : ''}     ⭐ ${score} punten`, 512, 343);
+    if (progress.line) { ctx.fillStyle = '#5cf0a0'; fit(ctx, progress.line, 940, 42, 800); ctx.fillText(progress.line, 512, 396); }
+    ctx.fillStyle = C.text; ctx.font = `800 40px ${FONT}`;
     const hasNext = lvl + 1 < LVLS.length;
-    ctx.fillText(passed ? (hasNext ? (before ? 'Goed gedaan!' : 'Het volgende level is open! 🔓') : 'Je hebt alle levels gehaald! 🏆') : 'Haal 3 van de 4 goed om het volgende level te openen.', 512, 440);
+    const next = passed ? (hasNext ? (before ? 'Goed gedaan!' : 'Het volgende level is open! 🔓') : 'Je hebt alle levels gehaald! 🏆') : 'Haal 3 van de 4 goed om het volgende level te openen.';
+    fit(ctx, next, 940, 40, 800); ctx.fillText(next, 512, progress.line ? 452 : 420);
+    drawProgress(ctx, 745, 128, 245, 132, progress.history, { font: FONT, muted: C.muted, accent: C.accent, line: C.line });
     Q.update();
     resBtns.forEach(b => b.mesh.visible = true);
     resBtns[0].draw('🗺 Kaart', 'idle'); resBtns[0].onSelect = () => { sfx('click'); showMap(); };

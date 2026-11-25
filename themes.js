@@ -84,7 +84,7 @@ const THEMES = {
       ground.rotation.x = -Math.PI / 2; scene.add(ground);
       const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5a3b24 }), leafMat = new THREE.MeshLambertMaterial({ color: 0x1f5a45 }), snowMat = new THREE.MeshLambertMaterial({ color: 0xf4f8ff });
       for (let i = 0; i < 46; i++) {
-        const a = Math.random() * 6.283, r = 7 + Math.random() * 22, s = 0.8 + Math.random() * 1.3, t = new THREE.Group();
+        const a = Math.random() * 6.283, s = 0.8 + Math.random() * 1.3, r = themeClearR(a, 7 + Math.random() * 22, 0.9 * s), t = new THREE.Group();
         const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1 * s, 0.13 * s, 0.6 * s, 6), trunkMat); trunk.position.y = 0.3 * s; t.add(trunk);
         for (let k = 0; k < 3; k++) { const cone = new THREE.Mesh(new THREE.ConeGeometry((0.9 - k * 0.22) * s, 1.1 * s, 8), leafMat); cone.position.y = (0.9 + k * 0.62) * s; t.add(cone); }
         const cap = new THREE.Mesh(new THREE.ConeGeometry(0.28 * s, 0.35 * s, 8), snowMat); cap.position.y = 2.4 * s; t.add(cap);
@@ -219,7 +219,7 @@ const THEMES = {
           br.position.set(Math.sin(tilt) * len / 2 * -1, y + Math.cos(tilt) * len / 2, 0); br.rotation.z = tilt;
           const holder = new THREE.Group(); holder.rotation.y = Math.random() * 6.283; holder.add(br); t.add(holder);
         }
-        t.rotation.y = Math.random() * 6; place(t, 8 + Math.random() * 22, Math.random() * 6.283);
+        const a = Math.random() * 6.283; t.rotation.y = Math.random() * 6; place(t, themeClearR(a, 8 + Math.random() * 22, 1.2 * s), a);
       }
 
       // gravestones
@@ -295,10 +295,267 @@ const THEMES = {
       add(k.pole, k.stick, 0.4, 1.2, 0);
       return body;
     }
+  },
+
+  christmas: {
+    name: 'Kerst', icon: '🎄',
+    period: { from: [12, 1], to: [12, 26] },   // [month, day]
+    words: {
+      heading: 'Kies een spel 🎄',
+      monsters: 'Peperkoekmannen', monster: 'peperkoekmannetje', monsterIcon: '🍪',
+      ball: 'sneeuwbal', balls: 'sneeuwballen',
+      caught: 'Hap, gepakt! 🍪', tooFast: 'De peperkoekmannen waren te snel.'
+    },
+    vars: {
+      '--bg': '#06141a', '--bg2': '#0e3a2e', '--fg': '#fff8ee', '--muted': '#c4dccf',
+      '--accent': '#ffd34d', '--accent-ink': '#3a2200', '--accent-shadow': '#b77900',
+      '--card': 'rgba(255, 255, 255, 0.08)', '--card-edge': 'rgba(255, 215, 120, 0.24)',
+      '--chip': 'rgba(6, 22, 18, 0.85)',
+      '--glow1': 'rgba(255, 70, 70, 0.18)', '--glow2': 'rgba(70, 230, 130, 0.16)'
+    },
+    ui: {
+      panel: 'rgba(10,32,26,0.9)', edge: 'rgba(255,210,110,0.6)', line: 'rgba(255,210,110,0.3)',
+      accent: '#ffd34d', accentLight: '#fff1b8', text: '#eef8f0', muted: '#bcd6c8', tip: '#fff3c4',
+      btn: { idle: ['#5d7bf0', '#3a4fc4'], good: ['#46e591', '#16a058'], bad: ['#ff7477', '#cc2d33'], dim: ['#4f6460', '#34453f'], start: ['#ffd65a', '#f29d0b'] },
+      startInk: '#3a2200',
+      confetti: [0xff4a4a, 0x46e591, 0xffd34d, 0xffffff, 0x5d7bf0],
+      ray: 0xffe08a, ball: 0xffffff, ballGlow: 0x334455, puff: [0xffffff, 0xff4a4a, 0xffd34d], puddle: 0xc98a4a, defeat: 'crumble',   // gingerbread breaks into pieces instead of melting
+      map: { sea: '#0f2f3a', other: '#2f4a44', otherEdge: '#4a6b62', land: '#f3efe6', border: '#123028', hover: '#ffe28a' }
+    },
+    page: {
+      particles: { count: 60, make: () => ({ cls: 'flake', size: 2 + Math.random() * 5, secs: 8 + Math.random() * 10, drift: Math.random() * 80 - 40 }) },
+      css: `
+        .fx i.flake { border-radius: 50%; background: #fff; opacity: 0.85; }
+        .garland { position: absolute; left: 0; top: 0; width: 100%; height: 70px; }
+        .garland circle { animation: twinkle 1.6s ease-in-out infinite alternate; }
+        .garland circle:nth-of-type(3n) { animation-delay: -0.5s; }
+        .garland circle:nth-of-type(3n+1) { animation-delay: -1.1s; }
+        @keyframes twinkle { from { opacity: 0.35; } to { opacity: 1; } }
+        @media (prefers-reduced-motion: reduce) { .garland circle { animation: none; } }`,
+      sky: (function () {
+        // a string of lights hanging across the top
+        const colors = ['#ff4a4a', '#ffd34d', '#4dff88', '#5aa0ff', '#ff7be0'];
+        let bulbs = '';
+        for (let i = 0; i <= 24; i++) {
+          const x = i * 1000 / 24, y = 10 + 34 * Math.sin(Math.PI * ((i % 6) / 6));
+          bulbs += `<circle cx="${x.toFixed(0)}" cy="${(y + 7).toFixed(0)}" r="7" fill="${colors[i % colors.length]}"/>`;
+        }
+        let wire = 'M0,10';
+        for (let k = 0; k < 4; k++) wire += ` Q${k * 250 + 125},78 ${(k + 1) * 250},10`;
+        return `<svg class="garland" viewBox="0 0 1000 70" preserveAspectRatio="none">
+          <path d="${wire}" fill="none" stroke="#2a3a2a" stroke-width="3"/>${bulbs}</svg>`;
+      })(),
+      ground: `
+        <svg viewBox="0 0 1000 200" preserveAspectRatio="none">
+          <g fill="#1d5e3f">
+            <polygon points="60,120 95,30 130,120"/><polygon points="120,130 150,55 180,130"/>
+            <polygon points="800,115 840,20 880,115"/><polygon points="870,125 900,60 930,125"/>
+            <polygon points="450,135 470,85 490,135"/>
+          </g>
+          <g>
+            <circle cx="88" cy="80" r="4" fill="#ff4a4a"/><circle cx="104" cy="100" r="4" fill="#ffd34d"/><circle cx="80" cy="108" r="4" fill="#5aa0ff"/>
+            <circle cx="150" cy="90" r="3.5" fill="#ff7be0"/><circle cx="160" cy="115" r="3.5" fill="#4dff88"/>
+            <circle cx="832" cy="65" r="4" fill="#ffd34d"/><circle cx="850" cy="92" r="4" fill="#ff4a4a"/><circle cx="824" cy="100" r="4" fill="#4dff88"/>
+            <circle cx="896" cy="100" r="3.5" fill="#5aa0ff"/><circle cx="908" cy="116" r="3.5" fill="#ff4a4a"/>
+            <polygon points="840,8 843,17 852,17 845,22 848,31 840,25 832,31 835,22 828,17 837,17" fill="#ffd34d"/>
+          </g>
+          <path d="M0,110 C200,80 350,140 520,115 C700,90 820,135 1000,105 L1000,200 L0,200 Z" fill="#e6eefa"/>
+          <path d="M0,150 C250,125 450,170 650,150 C820,135 900,160 1000,145 L1000,200 L0,200 Z" fill="#cfdcf2"/>
+          <g>
+            <rect x="215" y="140" width="34" height="26" fill="#d93636"/><rect x="229" y="140" width="6" height="26" fill="#ffd34d"/><rect x="215" y="150" width="34" height="6" fill="#ffd34d"/>
+            <rect x="252" y="150" width="24" height="18" fill="#3a8fd8"/><rect x="261" y="150" width="5" height="18" fill="#fff"/>
+            <rect x="700" y="146" width="30" height="24" fill="#2fa86a"/><rect x="712" y="146" width="6" height="24" fill="#ff4a4a"/><rect x="700" y="155" width="30" height="6" fill="#ff4a4a"/>
+          </g>
+        </svg>`
+    },
+
+    // 3D surroundings: starry night, snowy forest with twinkling lights, a big Christmas tree, presents, candy canes, snowfall
+    scene(THREE, scene) {
+      scene.fog = new THREE.Fog(0x0b1e33, 18, 60);
+      scene.add(new THREE.HemisphereLight(0xcfe0ff, 0x2a3040, 0.95));
+      const sun = new THREE.DirectionalLight(0xfff0dd, 0.5); sun.position.set(4, 10, 2); scene.add(sun);
+      themeSky(THREE, scene, ['#030a1c', '#0b1f42', '#1c3a66', '#1c3a66'], 800);
+
+      const ground = new THREE.Mesh(new THREE.CircleGeometry(60, 64), new THREE.MeshLambertMaterial({ color: 0xeef3fb }));
+      ground.rotation.x = -Math.PI / 2; scene.add(ground);
+
+      // fairy lights: a few shared materials, so twinkling is cheap
+      const LIGHTS = [0xff3b3b, 0xffd34d, 0x4dff88, 0x5aa0ff, 0xff7be0];
+      const lightMats = [];
+      LIGHTS.forEach(c => { for (let k = 0; k < 2; k++) lightMats.push(new THREE.MeshBasicMaterial({ color: c, fog: false })); });
+      const bulbGeo = new THREE.SphereGeometry(0.055, 8, 6);
+      const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5a3b24 }), leafMat = new THREE.MeshLambertMaterial({ color: 0x1d5e3f }), snowMat = new THREE.MeshLambertMaterial({ color: 0xf4f8ff });
+      function pine(s, lit) {
+        const t = new THREE.Group();
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1 * s, 0.13 * s, 0.6 * s, 6), trunkMat); trunk.position.y = 0.3 * s; t.add(trunk);
+        for (let k = 0; k < 3; k++) {
+          const cone = new THREE.Mesh(new THREE.ConeGeometry((0.9 - k * 0.22) * s, 1.1 * s, 8), leafMat); cone.position.y = (0.9 + k * 0.62) * s; t.add(cone);
+          if (!lit) continue;
+          const n = 6 - k, r = (0.9 - k * 0.22) * s * 0.88, y = (0.45 + k * 0.62) * s, off = Math.random() * 6.283;
+          for (let b = 0; b < n; b++) {
+            const a = off + b * 6.283 / n, bulb = new THREE.Mesh(bulbGeo, lightMats[Math.floor(Math.random() * lightMats.length)]);
+            bulb.position.set(Math.cos(a) * r, y, Math.sin(a) * r); bulb.scale.setScalar(Math.max(1, s * 0.7)); t.add(bulb);
+          }
+        }
+        const cap = new THREE.Mesh(new THREE.ConeGeometry(0.28 * s, 0.35 * s, 8), snowMat); cap.position.y = 2.4 * s; t.add(cap);
+        return t;
+      }
+      for (let i = 0; i < 44; i++) {
+        const a = Math.random() * 6.283, s = 0.8 + Math.random() * 1.3, r = themeClearR(a, 7 + Math.random() * 22, 0.9 * s), t = pine(s, Math.random() < 0.55);
+        t.position.set(Math.cos(a) * r, 0, Math.sin(a) * r); t.rotation.y = Math.random() * 6; scene.add(t);
+      }
+
+      // the big Christmas tree with a golden star on top
+      const big = pine(3.2, true); big.position.set(6, 0, -11); scene.add(big);
+      const starShape = new THREE.Shape();
+      for (let i = 0; i < 10; i++) {
+        const a = Math.PI / 2 + i * Math.PI / 5, rad = i % 2 ? 0.22 : 0.5;
+        if (i) starShape.lineTo(Math.cos(a) * rad, Math.sin(a) * rad); else starShape.moveTo(Math.cos(a) * rad, Math.sin(a) * rad);
+      }
+      const star = new THREE.Mesh(new THREE.ExtrudeGeometry(starShape, { depth: 0.12, bevelEnabled: false }), new THREE.MeshBasicMaterial({ color: 0xffd34d, fog: false }));
+      star.geometry.center(); star.position.set(6, 3.2 * 2.4 + 0.75, -11); scene.add(star);
+
+      // presents: a box with a ribbon both ways
+      const PRESENTS = [[0xd93636, 0xffd34d], [0x3a8fd8, 0xffffff], [0x2fa86a, 0xff4a4a], [0xffd34d, 0xd93636], [0xb04ad9, 0xffffff]];
+      function present(w, h, d, [box, ribbon]) {
+        const g = new THREE.Group(), bm = new THREE.MeshLambertMaterial({ color: box }), rm = new THREE.MeshLambertMaterial({ color: ribbon });
+        const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), bm); b.position.y = h / 2; g.add(b);
+        const r1 = new THREE.Mesh(new THREE.BoxGeometry(w * 0.18, h + 0.01, d + 0.01), rm); r1.position.y = h / 2; g.add(r1);
+        const r2 = new THREE.Mesh(new THREE.BoxGeometry(w + 0.01, h + 0.01, d * 0.18), rm); r2.position.y = h / 2; g.add(r2);
+        const bow = new THREE.Mesh(new THREE.TorusGeometry(Math.min(w, d) * 0.14, 0.025, 6, 12), rm); bow.position.y = h + 0.04; g.add(bow);
+        return g;
+      }
+      for (let i = 0; i < 7; i++) {
+        const s = 0.35 + Math.random() * 0.4, p = present(s, s * (0.6 + Math.random() * 0.5), s * (0.8 + Math.random() * 0.4), PRESENTS[i % PRESENTS.length]);
+        const a = Math.random() * 6.283, r = 1.6 + Math.random() * 1.6;
+        p.position.set(6 + Math.cos(a) * r, 0, -11 + Math.sin(a) * r); p.rotation.y = Math.random() * 6; scene.add(p);
+      }
+      for (let i = 0; i < 10; i++) {
+        const s = 0.3 + Math.random() * 0.3, a = Math.random() * 6.283, r = 4.5 + Math.random() * 12;
+        const p = present(s, s * 0.8, s, PRESENTS[i % PRESENTS.length]);
+        p.position.set(Math.cos(a) * r, 0, Math.sin(a) * r); p.rotation.y = Math.random() * 6; scene.add(p);
+      }
+
+      // candy canes stuck in the snow
+      const cc = document.createElement('canvas'); cc.width = cc.height = 64;
+      const cx = cc.getContext('2d'); cx.fillStyle = '#ffffff'; cx.fillRect(0, 0, 64, 64); cx.fillStyle = '#e02828';
+      for (let k = -64; k < 128; k += 32) { cx.beginPath(); cx.moveTo(k, 64); cx.lineTo(k + 16, 64); cx.lineTo(k + 80, 0); cx.lineTo(k + 64, 0); cx.fill(); }
+      const caneTex = new THREE.CanvasTexture(cc); caneTex.wrapS = caneTex.wrapT = THREE.RepeatWrapping; caneTex.repeat.set(1, 4);
+      const caneMat = new THREE.MeshLambertMaterial({ map: caneTex });
+      for (let i = 0; i < 8; i++) {
+        const g = new THREE.Group(), s = 0.8 + Math.random() * 0.8;
+        const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.1, 10), caneMat); stick.position.y = 0.55; g.add(stick);
+        const hook = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.05, 8, 16, Math.PI), caneMat); hook.position.set(0.16, 1.1, 0); g.add(hook);
+        g.scale.setScalar(s); g.rotation.set(0, Math.random() * 6, (Math.random() - 0.5) * 0.2);
+        const a = Math.random() * 6.283, r = themeClearR(a, 4 + Math.random() * 10, 0.3); g.position.set(Math.cos(a) * r, 0, Math.sin(a) * r); scene.add(g);
+      }
+
+      const fall = themeFall(THREE, scene, 500, [0xffffff], 0.05, 0.85, 1);
+      const base = lightMats.map(m => m.color.clone());
+
+      return function update(dt, t) {
+        fall(dt, t);
+        lightMats.forEach((m, i) => m.color.copy(base[i]).multiplyScalar(0.45 + 0.55 * Math.max(0, Math.sin(t * 2.2 + i * 1.9))));
+        star.rotation.y = Math.sin(t * 0.6) * 0.5;
+      };
+    },
+
+    // a gingerbread man with a bow tie, holding a pole for the answer sign (sign hangs at about y 1.7)
+    monster(THREE, i) {
+      const k = themeCache(this, () => ({
+        dough: new THREE.MeshLambertMaterial({ color: 0xb8692a }), icing: new THREE.MeshLambertMaterial({ color: 0xffffff }),
+        stick: new THREE.MeshLambertMaterial({ color: 0x6b4423 }),
+        tie: [0xe53935, 0x2fa86a, 0x3a8fd8, 0xffc107].map(c => new THREE.MeshLambertMaterial({ color: c })),
+        head: new THREE.SphereGeometry(0.19, 20, 14), body: new THREE.SphereGeometry(0.26, 20, 14),
+        limb: new THREE.CylinderGeometry(0.085, 0.09, 0.42, 10), end: new THREE.SphereGeometry(0.09, 12, 8),
+        eye: new THREE.SphereGeometry(0.028, 8, 6), smile: new THREE.TorusGeometry(0.07, 0.014, 6, 12, Math.PI),
+        button: new THREE.SphereGeometry(0.035, 10, 8), tieGeo: new THREE.ConeGeometry(0.06, 0.11, 10),
+        ring: new THREE.TorusGeometry(0.09, 0.013, 6, 16), pole: new THREE.CylinderGeometry(0.02, 0.02, 1.0, 6)
+      }));
+      const body = new THREE.Group();
+      const add = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); body.add(m); return m; };
+      add(k.head, k.dough, 0, 1.14, 0).scale.set(1, 1, 0.7);
+      add(k.body, k.dough, 0, 0.7, 0).scale.set(1, 1.25, 0.55);
+      [-1, 1].forEach(sd => {
+        const leg = add(k.limb, k.dough, sd * 0.12, 0.25, 0); leg.rotation.z = sd * 0.18;
+        add(k.end, k.dough, sd * 0.16, 0.06, 0.02).scale.set(1.1, 0.8, 1);
+        add(k.ring, k.icing, sd * 0.155, 0.14, 0).rotation.x = Math.PI / 2;
+        const arm = add(k.limb, k.dough, sd * 0.3, 0.88, 0); arm.rotation.z = sd * 1.1;
+        add(k.end, k.dough, sd * 0.48, 0.97, 0);
+        add(k.eye, k.icing, sd * 0.065, 1.19, 0.13);
+      });
+      add(k.smile, k.icing, 0, 1.1, 0.13).rotation.z = Math.PI;
+      [0.8, 0.68, 0.56].forEach((y, n) => add(k.button, n === 1 ? k.icing : k.tie[(i + n) % 4], 0, y, 0.14));
+      const tie = k.tie[i % 4];
+      add(k.tieGeo, tie, -0.055, 0.95, 0.1).rotation.z = -Math.PI / 2;
+      add(k.tieGeo, tie, 0.055, 0.95, 0.1).rotation.z = Math.PI / 2;
+      add(k.pole, k.stick, 0.48, 1.2, 0);
+      return body;
+    }
   }
 };
 
 /* ---------- shared helpers for the 3D scenes ---------- */
+
+// A monster that is not hit breaks into pieces (themes with ui.defeat: 'crumble') instead of melting:
+// every part of its body becomes a few chunks that fly apart, tumble to the ground and shrink away.
+// parent = the group the monsters are in, power = how hard the pieces fly (1 = falling apart, more = hit
+// by a snowball); call themeUpdateShards every frame.
+const themeShards = [];
+let themeShardGeo = null;
+function themeCrumble(THREE, parent, body, power) {
+  const pw = power || 1;
+  if (!themeShardGeo) themeShardGeo = new THREE.BoxGeometry(1, 1, 1);
+  body.updateMatrixWorld(true); parent.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(parent.matrixWorld).invert(), center = new THREE.Vector3();
+  body.getWorldPosition(center); center.applyMatrix4(inv);
+  body.traverse(m => {
+    if (!m.isMesh) return;
+    if (!m.geometry.boundingSphere) m.geometry.computeBoundingSphere();
+    const ws = new THREE.Vector3(); m.getWorldScale(ws);
+    const r = m.geometry.boundingSphere.radius * Math.max(ws.x, ws.y, ws.z);
+    if (r < 0.04) return;                                   // eyes and buttons just vanish
+    const n = r > 0.2 ? 4 : r > 0.1 ? 2 : 1;
+    for (let k = 0; k < n; k++) {
+      const p = new THREE.Vector3(); m.getWorldPosition(p); p.applyMatrix4(inv);
+      p.x += (Math.random() - 0.5) * r; p.y += (Math.random() - 0.5) * r; p.z += (Math.random() - 0.5) * r * 0.5;
+      const s = Math.max(0.05, r * (0.45 + Math.random() * 0.3));
+      const shard = new THREE.Mesh(themeShardGeo, m.material);
+      shard.position.copy(p); shard.scale.set(s, s * (0.6 + Math.random() * 0.5), s * 0.6);
+      shard.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
+      const out = p.clone().sub(center); out.y = 0;
+      if (out.lengthSq() < 1e-4) out.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+      out.normalize().multiplyScalar((0.6 + Math.random() * 1.2) * pw);
+      parent.add(shard);
+      themeShards.push({ m: shard, parent, base: shard.scale.clone(), t: 0,
+        v: new THREE.Vector3(out.x + (Math.random() - 0.5) * 0.6 * pw, (1.2 + Math.random() * 1.8) * Math.sqrt(pw), out.z + (Math.random() - 0.5) * 0.6 * pw - (pw - 1) * 1.2),
+        spin: new THREE.Vector3(Math.random() * 10 - 5, Math.random() * 10 - 5, Math.random() * 10 - 5) });
+    }
+  });
+}
+function themeUpdateShards(dt) {
+  for (let i = themeShards.length - 1; i >= 0; i--) {
+    const s = themeShards[i], m = s.m; s.t += dt;
+    s.v.y -= 9.8 * dt; m.position.addScaledVector(s.v, dt);
+    const floor = m.scale.y / 2;
+    if (m.position.y < floor) { m.position.y = floor; s.v.y = Math.abs(s.v.y) * 0.3; s.v.x *= 0.6; s.v.z *= 0.6; s.spin.multiplyScalar(0.5); }
+    m.rotation.x += s.spin.x * dt; m.rotation.y += s.spin.y * dt; m.rotation.z += s.spin.z * dt;
+    if (s.t > 1.5) m.scale.copy(s.base).multiplyScalar(Math.max(0, 1 - (s.t - 1.5) / 0.8));
+    if (s.t > 2.3) { s.parent.remove(m); themeShards.splice(i, 1); }
+  }
+}
+
+// The monsters walk in from 7 m away, in front of the player (in VR up to about 70° to each side).
+// Tall scenery (trees, candy canes) stays out of that area, or it hides their answer signs.
+// a = angle of the scenery spot (x = cos a · r, z = sin a · r), r = its distance, reach = how far it sticks out.
+// Returns r, or a new distance further away when the spot is in the monsters' way.
+const MONSTER_CLEAR = 9.5;
+function themeClearR(a, r, reach) {
+  // the signs reach up to ~75° to the side (70° plus half a sign); a wide tree just outside that still sticks into it
+  const ahead = Math.abs(Math.atan2(Math.cos(a), -Math.sin(a))) < 1.32 + Math.atan2(reach, r);
+  if (!ahead || r - reach >= MONSTER_CLEAR) return r;
+  return MONSTER_CLEAR + reach + Math.random() * Math.max(0, 29 - MONSTER_CLEAR - reach);
+}
 
 // gradient sky dome [top, upper, horizon, below] plus stars
 function themeSky(THREE, scene, stops, stars) {

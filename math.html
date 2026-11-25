@@ -1,0 +1,1277 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rekenen oefenen</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧮</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a1838; --fg: #f3f7ff; --muted: #b8c7ea;
+    --accent: #ffcf40; --accent-ink: #3a2200; --chip: rgba(8, 20, 52, 0.78);
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #060f26; --chip: rgba(4, 12, 34, 0.82); } }
+  :root[data-theme="dark"] { --bg: #060f26; --chip: rgba(4, 12, 34, 0.82); }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); height: 100%; }
+  *, *::before, *::after { box-sizing: inherit; }
+  body { height: 100%; margin: 0; overflow: hidden; background: var(--bg); color: var(--fg);
+    font-family: "Nunito", "Trebuchet MS", system-ui, sans-serif; }
+  #app { position: relative; width: 100%; height: 100%; }
+  #app canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  #hud { position: absolute; left: 0; right: 0; bottom: 0; padding: 14px 16px 18px;
+    display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+  #vr { pointer-events: auto; font: 900 1.15rem/1 "Nunito", "Trebuchet MS", system-ui, sans-serif;
+    color: var(--accent-ink); background: var(--accent); border: 0; border-radius: 999px;
+    padding: 0.9em 1.6em; box-shadow: 0 4px 0 var(--accent-shadow, #b77900); cursor: pointer; }
+  #vr:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+  #vr[hidden] { display: none; }
+  /* phones are played upright: held sideways, this covers the game */
+  #turn { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px; padding: 16px; background: var(--bg); color: var(--fg); text-align: center;
+    font: 900 1.6rem/1.3 "Nunito", "Trebuchet MS", system-ui, sans-serif; }
+  #turn[hidden] { display: none; }
+  #turn .phone { font-size: 4.5rem; animation: turn 2.4s ease-in-out infinite; }
+  @keyframes turn { 0%, 25% { transform: rotate(-90deg); } 55%, 100% { transform: rotate(0deg); } }
+  @media (prefers-reduced-motion: reduce) { #turn .phone { animation: none; } }
+  #note { pointer-events: auto; margin: 0; max-width: 34rem; text-align: center; font-size: 0.95rem;
+    line-height: 1.4; color: var(--muted); background: var(--chip); padding: 0.5em 0.9em; border-radius: 12px; }
+</style>
+</head>
+<body>
+<div id="turn" hidden><div class="phone" aria-hidden="true">📱</div><p>Draai je telefoon rechtop</p></div>
+<div id="app">
+  <div id="hud">
+    <button id="vr" hidden>🥽 Speel in VR</button>
+    <p id="note" hidden></p>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="settings.js"></script>
+<script src="themes.js"></script>
+<script src="progress.js"></script>
+<script src="mathsettings.js"></script>
+<script>
+/* =====================================================================
+   THE MATH SETTINGS are in mathsettings.js, next to this file: which
+   divisors and number ranges she can choose from, remainders, the hint
+   list and how many sums per game. Below are only the game settings.
+   ===================================================================== */
+/* Monster mode: monsters carrying the answers walk towards you; hit the right one!
+   MONSTER_SPEED: 1 = normal, 0.7 = calmer, 1.4 = faster.
+   LIVES: how often a monster may reach you before the game is over. */
+const MONSTER_SPEED = 1;
+const LIVES = 3;
+/* Visits and scores go to your Google Sheet: the link is in settings.js.
+   Event names and fields (g: 'rekenen', 'bezoek', goed, …) are the sheet's data. */
+const logGame = (e, extra) => logEvent(e, Object.assign({ g: 'rekenen' }, extra));
+logGame('bezoek');
+</script>
+<script>
+(async function () {
+  try {
+    await Promise.all([document.fonts.load('900 64px Nunito'), document.fonts.load('800 48px Nunito'), document.fonts.load('700 40px Nunito')]);
+  } catch (e) {}
+  start();
+})();
+
+function start() {
+  const FONT = '"Nunito", "Trebuchet MS", system-ui, sans-serif';
+  const C = THEME.ui, W = THEME.words;
+
+  // ---------- what to practise ----------
+  // levels: sheet = the value logged to the Google Sheet
+  const LEVELS = [
+    { key: 'guided', sheet: 'hulplijst', button: '📝 Met hulplijst', text: 'Je hulplijst staat al klaar.' },
+    { key: 'build',  sheet: 'zelf',      button: '✏️ Zelf maken',     text: 'Maak eerst zelf je hulplijst.' },
+    { key: 'mental', sheet: 'hoofd',     button: '🧠 Uit je hoofd',   text: 'Zonder hulplijst, alleen het antwoord.' }
+  ];
+  const CFG = (function (c) {
+    c = c || {};
+    const ints = (a, min) => (Array.isArray(a) ? a : []).map(x => Math.round(Number(x))).filter(x => x >= min);
+    const divisors = [...new Set(ints(c.divisors, 2))].sort((a, b) => a - b);
+    const ranges = (Array.isArray(c.ranges) ? c.ranges : []).map(r => ints(r, 1)).filter(r => r.length === 2)
+      .map(([a, b]) => [Math.min(a, b), Math.min(Math.max(a, b), 1000000)]);
+    const chosen = c.chosen || {};
+    const hints = {};
+    Object.keys(c.hints || {}).forEach(d => { const h = [...new Set(ints(c.hints[d], 1))].sort((a, b) => b - a); if (h.length) hints[d] = h; });
+    return {
+      divisors: divisors.length ? divisors : [5], ranges: ranges.length ? ranges : [[100, 1000]],
+      chosenDivisors: ints(chosen.divisors, 2), chosenRanges: (Array.isArray(chosen.ranges) ? chosen.ranges : []).filter(Array.isArray).map(r => r.join('-')),
+      rest: !!c.remainders, count: Math.max(1, Math.min(50, Math.round(Number(c.count) || 10))), hints
+    };
+  })(typeof MATH === 'object' && MATH ? MATH.division : null);
+  const rangeKey = r => r.join('-');
+  const nl = n => n.toLocaleString('nl-NL');   // 10000 → 10.000
+  // what she picked on the start screen (at least one divisor and one range); remembered per device
+  let pickDivs = new Set(), pickRanges = new Set(), levelIdx = 0;
+  function loadPicks() {
+    let d = null, r = null, lv = null;
+    try { d = JSON.parse(localStorage.getItem('math-divisors') || 'null'); r = JSON.parse(localStorage.getItem('math-ranges') || 'null'); lv = localStorage.getItem('math-level'); } catch (e) {}
+    const okD = (Array.isArray(d) ? d : CFG.chosenDivisors).filter(x => CFG.divisors.includes(x));
+    const okR = (Array.isArray(r) ? r : CFG.chosenRanges).filter(k => CFG.ranges.some(x => rangeKey(x) === k));
+    pickDivs = new Set(okD.length ? okD : [CFG.divisors.includes(5) ? 5 : CFG.divisors[0]]);
+    pickRanges = new Set(okR.length ? okR : [rangeKey(CFG.ranges[0])]);
+    levelIdx = Math.max(0, LEVELS.findIndex(l => l.key === lv));
+    loadBest();
+  }
+  function savePicks() {
+    try { localStorage.setItem('math-divisors', JSON.stringify([...pickDivs])); localStorage.setItem('math-ranges', JSON.stringify([...pickRanges])); } catch (e) {}
+    loadBest();
+  }
+  const chosenDivs = () => CFG.divisors.filter(d => pickDivs.has(d));
+  const chosenRanges = () => CFG.ranges.filter(r => pickRanges.has(rangeKey(r)));
+  // the hint list for a divisor: every "digit × 1, 10, 100, …" that fits the biggest chosen number
+  function hintsFor(d) {
+    if (CFG.hints[d]) return CFG.hints[d].slice();
+    const maxQ = Math.floor(Math.max(...chosenRanges().map(r => r[1])) / d), out = [];
+    for (let p = 1; p <= maxQ; p *= 10) for (let k = 1; k <= 9; k++) if (k * p <= maxQ) out.push(k * p);
+    return out.sort((a, b) => b - a);
+  }
+  // SET is the sum being worked on: its divisor and hint list change with every sum
+  const SET = { d: 5, hints: [], rest: CFG.rest, count: CFG.count };
+  function useDivisor(d) { SET.d = d; SET.hints = hintsFor(d); }
+  // the sums of a game: each takes a random chosen divisor and a number from a random chosen range
+  function makeProblems() {
+    const divs = chosenDivs(), ranges = chosenRanges(), out = [], seen = new Set();
+    for (let tries = 0; out.length < SET.count && tries < SET.count * 50; tries++) {
+      const d = divs[Math.floor(Math.random() * divs.length)], [lo, hi] = ranges[Math.floor(Math.random() * ranges.length)];
+      const from = Math.max(lo, d), n = SET.rest ? from + Math.floor(Math.random() * (hi - from + 1))
+        : d * (Math.ceil(from / d) + Math.floor(Math.random() * (Math.floor(hi / d) - Math.ceil(from / d) + 1)));
+      if (n < from || n > hi || seen.has(n + ':' + d)) continue;
+      seen.add(n + ':' + d); out.push({ n, d, repeat: false });
+    }
+    return out;
+  }
+  // logged as e.g. "5+10 | 100-1000"
+  const setName = () => `${chosenDivs().join('+')} | ${chosenRanges().map(rangeKey).join('+')}`;
+  const level = () => LEVELS[levelIdx].key;
+  function useLevel(i) {
+    levelIdx = Math.max(0, Math.min(LEVELS.length - 1, i));
+    try { localStorage.setItem('math-level', LEVELS[levelIdx].key); } catch (e) {}
+    loadBest();
+  }
+  const playable = () => chosenDivs().length > 0 && chosenRanges().length > 0;
+
+  const app = document.getElementById('app');
+  const vrBtn = document.getElementById('vr');
+  const note = document.getElementById('note');
+
+  // ---------- renderer / scene ----------
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.xr.enabled = true;
+  renderer.xr.setReferenceSpaceType('local-floor');
+  app.insertBefore(renderer.domElement, app.firstChild);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(60, 1, 0.05, 200);
+  const updateScenery = THEME.scene(THREE, scene);   // sky, ground and weather come from themes.js
+
+  // ---------- canvas helpers ----------
+  function rr(ctx, x, y, w, h, r) {
+    ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+  function fit(ctx, text, maxW, size, weight) {
+    let s = size;
+    do { ctx.font = `${weight} ${s}px ${FONT}`; if (ctx.measureText(text).width <= maxW) break; s -= 2; } while (s > 14);
+    return s;
+  }
+  function wrap(ctx, text, maxW) {
+    const words = text.split(' '), lines = []; let line = '';
+    words.forEach(w => { const t = line ? line + ' ' + w : w; if (ctx.measureText(t).width > maxW && line) { lines.push(line); line = w; } else line = t; });
+    if (line) lines.push(line); return lines;
+  }
+  // text in at most `maxLines` lines, shrinking the font until it fits
+  function fitLines(ctx, text, maxW, maxLines, size, weight, minSize) {
+    let s = size, lines;
+    while (true) {
+      ctx.font = `${weight} ${s}px ${FONT}`;
+      lines = wrap(ctx, text, maxW);
+      if ((lines.length <= maxLines && lines.every(l => ctx.measureText(l).width <= maxW)) || s <= minSize) break;
+      s -= 2;
+    }
+    return { lines: lines.slice(0, maxLines), size: s };
+  }
+
+  const interactive = [];
+  function canvasPlane(w, h, cw) {
+    const c = document.createElement('canvas'); c.width = cw; c.height = Math.round(cw * h / w);
+    const ctx = c.getContext('2d'), tex = new THREE.CanvasTexture(c);
+    tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false; tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, fog: false }));
+    return { mesh, c, ctx, tex, update() { tex.needsUpdate = true; } };
+  }
+  const BTN_COLORS = C.btn;
+  function makeButton(w, h, cw, maxLines) {
+    const p = canvasPlane(w, h, cw);
+    p.enabled = true; p.state = 'idle'; p.base = 1; p.mesh.userData.btn = p;
+    p.draw = function (label, state) {
+      this.state = state;
+      const { ctx, c } = this, [a, b] = BTN_COLORS[state], r = Math.min(42, c.height * 0.3);
+      ctx.clearRect(0, 0, c.width, c.height);
+      ctx.fillStyle = 'rgba(0,0,0,0.35)'; rr(ctx, 8, 14, c.width - 16, c.height - 18, r); ctx.fill();
+      const g = ctx.createLinearGradient(0, 0, 0, c.height); g.addColorStop(0, a); g.addColorStop(1, b);
+      ctx.fillStyle = g; rr(ctx, 8, 6, c.width - 16, c.height - 20, r); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 5; ctx.stroke();
+      ctx.fillStyle = state === 'start' ? C.startInk : '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const ml = maxLines || 1, inner = c.height - 34;
+      const f = fitLines(ctx, label, c.width - 60, ml, Math.min(72, inner * (ml === 1 ? 0.62 : 0.42)), ml === 1 ? 900 : 800, 20);
+      const lh = f.size * 1.12, y0 = (c.height - 14) / 2 + 2 - (f.lines.length - 1) * lh / 2;
+      f.lines.forEach((l, i) => ctx.fillText(l, c.width / 2, y0 + i * lh));
+      this.update();
+    };
+    interactive.push(p.mesh);
+    return p;
+  }
+
+  // ---------- game UI ----------
+  // Two layouts. Wide (computer, tablet, landscape, VR): the big panel (Q) holds the hint list on the
+  // left and the worksheet on the right, the question along the bottom, the answers in one row below.
+  // Tall (phone held upright): worksheet on top, hint list in the middle, question at the bottom,
+  // the answers 2 × 2 below it. The panel is rebuilt when the layout changes.
+  const ui = new THREE.Group(); scene.add(ui);
+  const Z = -2.4;
+  const S = canvasPlane(1.5, 0.19, 1024); ui.add(S.mesh);
+  let Q = null, QW = 0, QH = 0, tall = false;
+  const TALL_TOP = 2.71, TALL_MPP = 1.1 / 1024;   // tall panel: top edge (m) and metres per canvas pixel
+  function buildPanel() {
+    if (Q) { ui.remove(Q.mesh); Q.mesh.geometry.dispose(); Q.tex.dispose(); Q.mesh.material.dispose(); }
+    Q = tall ? canvasPlane(1.1, 1.42, 1024) : canvasPlane(1.96, 1.2, 1280);
+    ui.add(Q.mesh); QW = Q.c.width; QH = Q.c.height;
+  }
+  const answerBtns = [];
+  for (let i = 0; i < 4; i++) {
+    const b = makeButton(0.46, 0.28, 512, 2); b.index = i;
+    b.onSelect = () => answer(b); ui.add(b.mesh); answerBtns.push(b);
+  }
+  const levelBtns = LEVELS.map((lv, i) => {
+    const b = makeButton(0.62, 0.22, 640, 1);
+    b.onSelect = () => { sfx('click'); useLevel(i); drawLevelBtns(); drawStart(); };
+    ui.add(b.mesh); return b;
+  });
+  const calmBtn = makeButton(0.95, 0.28, 512, 1);
+  calmBtn.onSelect = () => { if (!playable()) return; sfx('click'); newGame('calm'); }; ui.add(calmBtn.mesh);
+  const monBtn = makeButton(0.95, 0.28, 512, 1);
+  monBtn.onSelect = () => { if (!playable()) return; sfx('click'); newGame('monsters'); }; ui.add(monBtn.mesh);
+  // start screen: toggle buttons for the divisors and the number ranges (several may be on, at least one stays on)
+  const toggle = (set, key) => { if (!set.has(key)) set.add(key); else if (set.size > 1) set.delete(key); else return false; return true; };
+  const divBtns = CFG.divisors.map(d => {
+    const b = makeButton(0.17, 0.13, 256, 1); b.key = d;
+    b.onSelect = () => { if (toggle(pickDivs, d)) { sfx('click'); savePicks(); drawPicks(); drawStart(); } };
+    ui.add(b.mesh); return b;
+  });
+  const rangeBtns = CFG.ranges.map(r => {
+    const b = makeButton(0.5, 0.13, 640, 1), k = rangeKey(r); b.key = k;
+    b.onSelect = () => { if (toggle(pickRanges, k)) { sfx('click'); savePicks(); drawPicks(); drawStart(); } };
+    ui.add(b.mesh); return b;
+  });
+  function drawPicks() {
+    divBtns.forEach(b => b.draw(String(b.key), pickDivs.has(b.key) ? 'start' : 'idle'));
+    rangeBtns.forEach((b, i) => b.draw(`${nl(CFG.ranges[i][0])}–${nl(CFG.ranges[i][1])}`, pickRanges.has(b.key) ? 'start' : 'idle'));
+  }
+  // home: during a game back to the start screen, on the start screen back to all games
+  const homeBtn = makeButton(0.5, 0.12, 512, 1); ui.add(homeBtn.mesh);
+  // after a finished sum: read the answer in peace, then click on (the clock is stopped meanwhile)
+  const continueBtn = makeButton(0.7, 0.24, 640, 1); continueBtn.mesh.visible = false; ui.add(continueBtn.mesh);
+  continueBtn.onSelect = () => { if (!continueBtn.mesh.visible || phase !== 'question') return; sfx('click'); continueBtn.mesh.visible = false; resumeClock(); nextStep(); };
+  homeBtn.onSelect = () => {
+    sfx('click');
+    if (phase !== 'start') { goHome(); return; }
+    try { if (session) session.end(); } catch (e) {}
+    location.href = 'index.html';
+  };
+  function drawLevelBtns() { levelBtns.forEach((b, i) => b.draw(LEVELS[i].button, i === levelIdx ? 'start' : 'idle')); }
+  function showModeButtons(on) {
+    calmBtn.mesh.visible = monBtn.mesh.visible = on;
+    // on a phone the level is chosen on the start screen only, so the end screen has room for the result
+    levelBtns.forEach(b => b.mesh.visible = on && (!tall || phase === 'start'));
+    // the choices only on the start screen; "Nog een keer" plays the same choice again
+    divBtns.concat(rangeBtns).forEach(b => b.mesh.visible = on && phase === 'start');
+    if (on) { calmBtn.draw('📖 Rustig oefenen', 'start'); monBtn.draw(`${W.monsterIcon} ${W.monsters}`, 'good'); drawLevelBtns(); }
+    if (on) drawPicks();
+  }
+
+  function panelBg(ctx, c, r) {
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.fillStyle = C.panel; rr(ctx, 6, 6, c.width - 12, c.height - 12, r); ctx.fill();
+    ctx.strokeStyle = C.edge; ctx.lineWidth = 6; ctx.stroke();
+  }
+  function drawScore() {
+    const { ctx, c } = S; panelBg(ctx, c, 60);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#ffffff';
+    const life = mode === 'monsters' ? '     ' + '❤️'.repeat(Math.max(0, hearts)) + '🤍'.repeat(Math.max(0, LIVES - hearts)) : '';
+    const txt = `⭐ ${score}     ✅ ${solved}/${total}     🔥 ${streak}     ⏱ ${fmtTime(elapsed())}${life}`;
+    fit(ctx, txt, c.width - 80, 58, 800); ctx.fillText(txt, c.width / 2, c.height / 2 + 2); S.update();
+  }
+
+  let best = 0;
+  function loadBest() { try { best = parseInt(localStorage.getItem(setKey() + '-score') || '0', 10) || 0; } catch (e) { best = 0; } }
+
+  // the start screen: what to practise (the toggle buttons lie on top of this panel) and the level
+  // canvas y of the two button rows, for [wide, tall]; place() puts the buttons there
+  const PICK_ROWS = { wide: [250, 420], tall: [248, 378, 572] };
+  function drawStart() {
+    const { ctx, c } = Q, cx = QW / 2; panelBg(ctx, c, 56);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    const mw = QW - 80, line = (txt, y, size, weight) => { fit(ctx, txt, mw, size, weight); ctx.fillText(txt, cx, y); };
+    ctx.fillStyle = C.accent; line('Delen', tall ? 82 : 100, tall ? 88 : 100, 900);
+    ctx.fillStyle = C.muted; line('Delen door:', tall ? 152 : 178, 46, 800);
+    line('Getallen:', tall ? 494 : 348, 46, 800);
+    if (tall) { Q.update(); return; }   // on a phone the level buttons cover the rest of the panel
+    ctx.fillStyle = '#ffffff'; line(LEVELS[levelIdx].text, 530, 54, 800);
+    const bc = bestTime('calm'), bm = bestTime('monsters'), times = [bc && `rustig ${fmtTime(bc)}`, bm && `monsters ${fmtTime(bm)}`].filter(Boolean);
+    ctx.fillStyle = C.text;
+    line(`${SET.count} sommen${SET.rest ? ', met rest' : ''}${times.length ? '   ⏱ snelste: ' + times.join(', ') : ''}`, 610, 48, 800);
+    ctx.fillStyle = C.tip; line('Haal er steeds het grootste stuk uit je hulplijst af!', 700, 46, 800);
+    Q.update();
+  }
+
+  // ---------- drawing a step: hint list, worksheet, question ----------
+  const hintRow = m => `${m} × ${SET.d} = ${m * SET.d}`;
+  // the hint list in two wide columns: 10 and up on the left, the ones on the right
+  // (a long column is split at 12 rows), so the text can be big
+  function hintColumns() {
+    const cols = [];
+    [SET.hints.filter(m => m >= 10), SET.hints.filter(m => m < 10)].forEach(list => {
+      for (let i = 0; i < list.length; i += 12) cols.push(list.slice(i, i + 12));
+    });
+    return cols;
+  }
+  function drawHints(ctx, x0, w, top, bottom, header) {
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    if (header) {
+      ctx.fillStyle = C.accent; ctx.font = `900 46px ${FONT}`;
+      ctx.fillText(level() === 'build' ? '✏️ Jouw hulplijst' : '📝 Hulplijst', x0 + w / 2, top - 18);
+    }
+    const cols = hintColumns(), colW = w / cols.length, maxRows = Math.max(...cols.map(c => c.length));
+    const rh = Math.min(64, (bottom - top) / maxRows), size = Math.round(rh * 0.8);
+    const now = step && step.kind === 'hint' ? step.m : prob && prob.pending ? prob.pending : 0;
+    cols.forEach((rows, ci) => rows.forEach((m, ri) => {
+      const x = x0 + ci * colW, y = top + ri * rh, known = level() !== 'build' || !!(filled[SET.d] && filled[SET.d].has(m));
+      if (m === now) {
+        ctx.fillStyle = 'rgba(255,215,80,0.22)'; rr(ctx, x + 4, y + 2, colW - 8, rh - 4, 12); ctx.fill();
+        ctx.strokeStyle = C.accent; ctx.lineWidth = 3; ctx.stroke();
+      }
+      const txt = known ? hintRow(m) : `${m} × ${SET.d} = …`;
+      ctx.fillStyle = m === now ? C.accent : known ? '#ffffff' : C.muted;
+      fit(ctx, txt, colW - 16, size, 800); ctx.textBaseline = 'middle';
+      ctx.fillText(txt, x + colW / 2, y + rh / 2 + 1); ctx.textBaseline = 'alphabetic';
+    }));
+  }
+  // the answer as it's written at school, one digit at a time: 1 _ _ → 1 8 _ → 1 8 7
+  function answerSoFar() {
+    const q = Math.floor(prob.n / SET.d), r = prob.n % SET.d, done = prob.rem < SET.d && !prob.pending;
+    const tail = done && r ? ` rest ${r}` : '';
+    const digits = String(q).length;
+    const places = prob.parts.map(p => { const s = String(p), k = s.length - 1; return s[0] !== '0' && +s.slice(1) === 0 ? k : -1; });
+    const aligned = places.every(k => k >= 0) && new Set(places).size === places.length;
+    if (!aligned) return (prob.parts.length ? prob.parts.join(' + ') : '…') + (done ? ` = ${q}` : '') + tail;
+    const slots = Array(digits).fill(done ? '0' : '_');
+    prob.parts.forEach(p => { const s = String(p); slots[digits - s.length] = s[0]; });
+    return slots.join(' ') + tail;
+  }
+  // o: headY (the sum), top + area (the rows), ansY (the answer; with labelY the label goes above it, else in front)
+  function drawSheet(ctx, x0, w, o) {
+    const d = SET.d, cx = x0 + w / 2;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = C.accent; ctx.font = `900 ${o.headSize}px ${FONT}`; ctx.fillText(`${prob.n} : ${d}`, cx, o.headY);
+    // rows like on paper: number, minus the chunk, line, what's left, …
+    const rows = prob.lines.slice();
+    if (step.kind === 'chunk' && !step.done) rows.push({ minus: '?', now: true });
+    if (step.kind === 'subtract' && !step.done) rows.push({ num: '?', now: true });
+    const top = o.top, rh = Math.min(70, o.area / Math.max(1, rows.length)), size = Math.round(rh * 0.8);
+    const NX = x0 + w * 0.42;
+    rows.forEach((row, i) => {
+      const y = top + i * rh + rh * 0.8;
+      ctx.font = `900 ${size}px ${FONT}`; ctx.textAlign = 'right';
+      if (row.num !== undefined) {
+        if (i > 0) { ctx.strokeStyle = C.text; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(NX - size * 3.6, top + i * rh + 3); ctx.lineTo(NX + 8, top + i * rh + 3); ctx.stroke(); }
+        ctx.fillStyle = row.now ? C.accent : '#ffffff'; ctx.fillText(String(row.num), NX, y);
+        const last = i === rows.length - 1;
+        // the times-table fact at the end goes next to the last number
+        if (last && (row.fact || step.kind === 'fact')) {
+          const txt = `→  ${row.num} : ${d} = ${row.fact || '?'}`;
+          ctx.textAlign = 'left'; ctx.fillStyle = row.fact ? C.tip : C.accent;
+          fit(ctx, txt, x0 + w - NX - 40, Math.round(size * 0.8), 800); ctx.fillText(txt, NX + 30, y);
+        }
+      } else {
+        ctx.fillStyle = row.now ? C.accent : '#ffffff'; ctx.fillText(`− ${row.minus}`, NX, y);
+        if (row.note) { ctx.textAlign = 'left'; ctx.fillStyle = C.muted; ctx.font = `800 ${Math.round(size * 0.8)}px ${FONT}`; ctx.fillText(`(${row.note})`, NX + 30, y); }
+      }
+    });
+    // the answer so far
+    const a = answerSoFar();
+    if (o.labelY) {
+      ctx.textAlign = 'center'; ctx.fillStyle = C.muted; ctx.font = `800 46px ${FONT}`;
+      ctx.fillText('Antwoord:', cx, o.labelY);
+      ctx.fillStyle = C.accent; fit(ctx, a, w - 40, 72, 900); ctx.fillText(a, cx, o.ansY);
+    } else {
+      // "Antwoord:  1 8 _" on one line, the label in a calmer colour
+      ctx.font = `800 52px ${FONT}`; const lw = ctx.measureText('Antwoord:  ').width;
+      ctx.font = `900 76px ${FONT}`; const aw = ctx.measureText(a).width, x = cx - (lw + aw) / 2;
+      ctx.textAlign = 'left'; ctx.fillStyle = C.muted; ctx.font = `800 52px ${FONT}`; ctx.fillText('Antwoord:  ', x, o.ansY);
+      ctx.fillStyle = C.accent; ctx.font = `900 76px ${FONT}`; ctx.fillText(a, x + lw, o.ansY); ctx.textAlign = 'center';
+    }
+  }
+  function drawBig(ctx, x0, w, big, sub, subY, bigY) {
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    if (sub) { ctx.fillStyle = C.muted; fit(ctx, sub, w - 40, 52, 800); ctx.fillText(sub, x0 + w / 2, subY); }
+    ctx.fillStyle = C.accent; fit(ctx, big, w - 60, 150, 900); ctx.fillText(big, x0 + w / 2, bigY);
+  }
+  let lastFb = null, lastEnd = null;   // to redraw the same screen when the layout changes
+  const divider = (ctx, x1, y1, x2, y2) => { ctx.strokeStyle = C.line; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); };
+  function drawPlay(fb) {
+    lastFb = fb;
+    const { ctx, c } = Q; panelBg(ctx, c, 56);
+    const withHints = level() !== 'mental', mental = level() === 'mental';
+    let qY;   // where the question / feedback area starts
+    if (!tall) {
+      const split = 600, x0 = withHints ? split : 40, w = QW - x0 - 40;
+      if (withHints) { drawHints(ctx, 20, split - 34, 76, 640, true); divider(ctx, split - 8, 30, split - 8, 640); }
+      if (step.kind === 'hint') drawBig(ctx, x0, w, `${step.m} × ${SET.d} = ?`, `Rij ${warmIdx + 1} van ${warm.length}`, 180, 400);
+      else if (mental) drawBig(ctx, x0, w, `${prob.n} : ${SET.d} = ${prob.complete ? fullAnswer() : '?'}`, prob.repeat ? 'Deze komt nog een keer' : '', 180, 400);
+      else drawSheet(ctx, x0, w, { headY: 78, headSize: 76, top: 100, area: 410, labelY: 562, ansY: 628 });
+      qY = 650;
+    } else {
+      // worksheet on top, the hint list under it, the question at the bottom
+      const x0 = 30, w = QW - 60;
+      if (step.kind === 'hint') drawBig(ctx, x0, w, `${step.m} × ${SET.d} = ?`, `Maak je hulplijst: rij ${warmIdx + 1} van ${warm.length}`, 110, 390);
+      else if (mental) drawBig(ctx, x0, w, `${prob.n} : ${SET.d} = ${prob.complete ? fullAnswer() : '?'}`, prob.repeat ? 'Deze komt nog een keer' : '', 380, 700);
+      else drawSheet(ctx, x0, w, { headY: 86, headSize: 84, top: 102, area: 385, ansY: 548 });
+      if (withHints) { divider(ctx, 40, 578, QW - 40, 578); drawHints(ctx, 16, QW - 32, 590, 1150, false); }
+      qY = 1166;
+    }
+    // question or feedback along the bottom
+    divider(ctx, 50, qY, QW - 50, qY);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    const y1 = qY + 58, y2 = qY + 116, mw = QW - 60;
+    if (!fb) {
+      ctx.fillStyle = '#ffffff'; fit(ctx, step.prompt, mw, 60, 900); ctx.fillText(step.prompt, QW / 2, y1);
+      ctx.fillStyle = C.text; const sub = mode === 'monsters' ? `Raak het goede ${W.monster}! ${W.monsterIcon}` : step.sub;
+      fit(ctx, sub, mw, 46, 800); ctx.fillText(sub, QW / 2, y2);
+    } else {
+      ctx.fillStyle = fb.good ? '#5cf0a0' : '#ff9a9d'; fit(ctx, fb.title, mw, 58, 900); ctx.fillText(fb.title, QW / 2, y1);
+      const t = fb.why ? '💡 ' + fb.why : fb.sub || '';
+      if (t) { ctx.fillStyle = fb.why ? C.tip : C.text; fit(ctx, t, mw, 46, 800); ctx.fillText(t, QW / 2, y2); }
+    }
+    Q.update();
+  }
+  function starShape(ctx, cx, cy, r, filled) {
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rad = i % 2 ? r * 0.45 : r; ctx.lineTo(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad); }
+    ctx.closePath(); ctx.fillStyle = filled ? C.accent : 'rgba(255,255,255,0.12)'; ctx.fill();
+    ctx.lineWidth = 5; ctx.strokeStyle = filled ? C.accentLight : 'rgba(255,255,255,0.35)'; ctx.stroke();
+  }
+  function drawEnd(newBest, newTime, secs, lost, progress) {
+    lastEnd = [newBest, newTime, secs, lost, progress];
+    const { ctx, c } = Q, cx = QW / 2; panelBg(ctx, c, 56);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    if (tall) { drawEndTall(newBest, newTime, secs, lost, progress); return; }
+    if (lost) {
+      ctx.fillStyle = '#ff9a9d'; ctx.font = `900 110px ${FONT}`; ctx.fillText(W.caught, cx, 170);
+      ctx.fillStyle = '#ffffff'; ctx.font = `800 62px ${FONT}`; ctx.fillText(`${solved} van ${total} sommen gehaald`, cx, 320);
+      ctx.fillStyle = C.muted; ctx.font = `700 52px ${FONT}`; ctx.fillText(`${score} punten`, cx, 410);
+      ctx.fillStyle = C.text; ctx.font = `700 48px ${FONT}`;
+      ctx.fillText(W.tooFast, cx, 560); ctx.fillText('Probeer het nog eens!', cx, 630);
+      Q.update(); return;
+    }
+    const stars = firstRight === total ? 3 : firstRight >= Math.ceil(total * 0.75) ? 2 : 1;
+    ctx.fillStyle = C.accent; ctx.font = `900 110px ${FONT}`; ctx.fillText('Klaar! 🎉', cx, 140);
+    [cx - 190, cx, cx + 190].forEach((x, i) => starShape(ctx, x, 260, 64, i < stars));
+    ctx.fillStyle = '#ffffff'; ctx.font = `800 60px ${FONT}`; ctx.fillText(`${firstRight} van ${total} sommen zonder fouten`, cx, 420);
+    ctx.fillStyle = newTime ? '#5cf0a0' : '#ffffff'; ctx.font = `900 58px ${FONT}`;
+    const bt = bestTime(mode);
+    ctx.fillText(newTime ? `⏱ ${fmtTime(secs)}, nieuwe snelste tijd! 🏆` : `⏱ ${fmtTime(secs)} (snelste: ${fmtTime(bt)})`, cx, 510);
+    ctx.fillStyle = C.muted; ctx.font = `700 50px ${FONT}`;
+    ctx.fillText(newBest ? `${score} punten, nieuw record!` : `${score} punten (beste: ${best})`, cx, 595);
+    ctx.fillStyle = C.text; ctx.font = `700 46px ${FONT}`;
+    const cheer = newTime ? 'Wauw, sneller dan ooit!' : stars === 3 ? 'Alles goed! Lukt het nog sneller?' : 'Goed geoefend! Nog een keer?';
+    const line = progress && progress.line ? progress.line : cheer;
+    if (progress && progress.line) ctx.fillStyle = '#5cf0a0';
+    fit(ctx, line, 1180, 46, 800); ctx.fillText(line, cx, 690);
+    if (progress) drawProgress(ctx, 940, 34, 300, 300, progress.history, { font: FONT, muted: C.muted, accent: C.accent, line: C.line });
+    Q.update();
+  }
+  // phone: everything under each other, with the progress chart big at the bottom
+  function drawEndTall(newBest, newTime, secs, lost, progress) {
+    const { ctx } = Q, cx = QW / 2, mw = QW - 70;
+    const line = (txt, y, size, weight) => { fit(ctx, txt, mw, size, weight); ctx.fillText(txt, cx, y); };
+    if (lost) {
+      ctx.fillStyle = '#ff9a9d'; line(W.caught, 170, 100, 900);
+      ctx.fillStyle = '#ffffff'; line(`${solved} van ${total} sommen gehaald`, 330, 60, 800);
+      ctx.fillStyle = C.muted; line(`${score} punten`, 420, 54, 800);
+      ctx.fillStyle = C.text; line(W.tooFast, 560, 50, 800); line('Probeer het nog eens!', 630, 50, 800);
+      Q.update(); return;
+    }
+    const stars = firstRight === total ? 3 : firstRight >= Math.ceil(total * 0.75) ? 2 : 1, bt = bestTime(mode);
+    ctx.fillStyle = C.accent; line('Klaar! 🎉', 125, 110, 900);
+    [cx - 170, cx, cx + 170].forEach((x, i) => starShape(ctx, x, 240, 62, i < stars));
+    ctx.fillStyle = '#ffffff'; line(`${firstRight} van ${total} sommen zonder fouten`, 380, 58, 800);
+    ctx.fillStyle = newTime ? '#5cf0a0' : '#ffffff';
+    line(newTime ? `⏱ ${fmtTime(secs)}, nieuwe snelste tijd! 🏆` : `⏱ ${fmtTime(secs)} (snelste: ${fmtTime(bt)})`, 460, 56, 900);
+    ctx.fillStyle = C.muted; line(newBest ? `${score} punten, nieuw record!` : `${score} punten (beste: ${best})`, 535, 52, 800);
+    const cheer = newTime ? 'Wauw, sneller dan ooit!' : stars === 3 ? 'Alles goed! Lukt het nog sneller?' : 'Goed geoefend! Nog een keer?';
+    const msg = progress && progress.line ? progress.line : cheer;
+    ctx.fillStyle = progress && progress.line ? '#5cf0a0' : C.text;
+    const f = fitLines(ctx, msg, mw, 2, 52, 800, 36);   // may take two lines here
+    f.lines.forEach((l, i) => ctx.fillText(l, cx, 615 + i * f.size * 1.18));
+    if (progress) drawProgress(ctx, 140, 730, QW - 280, 400, progress.history, { font: FONT, muted: C.muted, accent: C.accent, line: C.line });
+    Q.update();
+  }
+
+  // ---------- timer ----------
+  let startedAt = 0, endedAt = 0, lastShownSec = -1, pausedAt = 0, pausedTotal = 0;
+  const elapsed = () => !startedAt ? 0 : Math.floor(((endedAt || pausedAt || performance.now()) - startedAt - pausedTotal) / 1000);
+  function pauseClock() { if (!pausedAt) pausedAt = performance.now(); }
+  function resumeClock() { if (pausedAt) { pausedTotal += performance.now() - pausedAt; pausedAt = 0; } }
+  const fmtTime = secs => `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+  // best score and fastest time are kept per set (and its settings) and level, so a changed set starts fresh
+  function setKey() {
+    const src = JSON.stringify([chosenDivs(), chosenRanges(), SET.rest, SET.count, level()]);
+    let h = 5381; for (let i = 0; i < src.length; i++) h = ((h << 5) + h + src.charCodeAt(i)) | 0;
+    return 'math-time-' + (h >>> 0).toString(36);
+  }
+  const timeKey = m => setKey() + (m === 'monsters' ? '-m' : '');
+  function bestTime(m) { try { return parseInt(localStorage.getItem(timeKey(m || mode)) || '0', 10) || 0; } catch (e) { return 0; } }
+
+  // ---------- the steps of a division ----------
+  // a step is one question with 2–4 options; every option has a label, whether it's right,
+  // and for a wrong one a tip ("why") that is shown when it is picked
+  const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const option = (label, ok, why) => ({ label: String(label), ok, why: why || '' });
+  // the right option plus up to 3 wrong ones (preferred ones first, then random others), shuffled
+  function withWrongs(good, preferred, others) {
+    const seen = new Set([good.label]), pick = [];
+    const take = o => { if (o && !seen.has(o.label) && pick.length < 3) { seen.add(o.label); pick.push(o); } };
+    preferred.forEach(take); shuffle(others.slice()).forEach(take);
+    return shuffle([good, ...pick]);
+  }
+  const isNum = x => Number.isInteger(x) && x >= 0;
+  // options for "a : d = ?"; wrong answers come with a check the child can do herself
+  function divisionOptions(a, near) {
+    const d = SET.d, q = Math.floor(a / d), r = a % d, lab = (x, rest) => rest ? `${x} rest ${rest}` : String(x);
+    const wrong = x => {
+      if (!isNum(x) || x < 1 || x === q) return null;
+      if (x * d > a) return option(x, false, `${x} × ${d} = ${x * d}, dat is meer dan ${a}.`);
+      if (!SET.rest) return option(x, false, `${x} × ${d} = ${x * d}, dat is niet ${a}.`);
+      return option(lab(x, a - x * d), false, `Rest ${a - x * d} is te veel: daar past nog ${d} in!`);
+    };
+    const wrongs = near.map(wrong);
+    if (SET.rest) wrongs.splice(1, 0, option(lab(q, (r + 1) % d), false, `${q} × ${d} = ${q * d}, dan blijft er ${r ? r : 'niets'} over.`));
+    return withWrongs(option(lab(q, r), true), wrongs.slice(0, 2), wrongs.slice(2));
+  }
+  function hintStep(m) {
+    const d = SET.d, v = m * d, unit = m >= 10 ? 10 ** Math.floor(Math.log10(m)) : 1;
+    const why = m >= 10 && m % 10 === 0 ? `${m / 10} × ${d} = ${m / 10 * d}. Zet er een 0 achter!`
+      : m > 1 ? `${m - 1} × ${d} = ${(m - 1) * d}. Doe er nog ${d} bij.` : `1 × ${d} is gewoon ${d}.`;
+    const wrongs = [(m + unit) * d, (m - unit) * d, v * 10, v % 10 === 0 ? v / 10 : v + d, v - d, v + 2 * d].filter(x => isNum(x) && x > 0 && x !== v).map(x => option(x, false, why));
+    return { kind: 'hint', m, prompt: `Maak je hulplijst: hoeveel is ${m} × ${d}?`, sub: 'Kies het goede antwoord 👇',
+      options: withWrongs(option(v, true), wrongs.slice(0, 2), wrongs.slice(2)) };
+  }
+  function chunkStep() {
+    const d = SET.d, rem = prob.rem, H = SET.hints;
+    const fits = H.filter(m => m * d <= rem), bigger = H.filter(m => m * d > rem), best = fits[0];
+    const row = m => `${m} × ${d} =`;   // without the answer: she works that out herself
+    const tooBig = m => option(row(m), false, `${m * d} is meer dan ${rem}. Dat past niet!`);
+    const tooSmall = m => option(row(m), false, `${m * d} past wel, maar het kan groter. Kies de grootste die past!`);
+    const lowerPlace = fits.find(m => String(m).length < String(best).length);
+    const preferred = [bigger.length ? tooBig(bigger[bigger.length - 1]) : null, fits[1] ? tooSmall(fits[1]) : null, lowerPlace ? tooSmall(lowerPlace) : null];
+    const others = [...fits.slice(2).map(tooSmall), ...bigger.slice(0, -1).map(tooBig)];
+    return { kind: 'chunk', m: best, prompt: `Wat kun je van ${rem} afhalen?`, sub: 'Kies de grootste uit je hulplijst die past 👇',
+      options: withWrongs(option(row(best), true), preferred, others) };
+  }
+  function subtractStep() {
+    const a = prob.rem, b = prob.pending * SET.d, r = a - b;
+    // digit by digit without borrowing: a common slip
+    const as = String(a), bs = String(b).padStart(as.length, '0');
+    const noBorrow = +[...as].map((ch, i) => Math.abs(+ch - +bs[i])).join('');
+    const why = x => `${x} + ${b} = ${x + b}, dat is niet ${a}.`;
+    const cands = [noBorrow, r + 10, r - 10, r + 100, r - 100, r + SET.d, r - SET.d].filter(x => isNum(x) && x !== r).map(x => option(x, false, why(x)));
+    return { kind: 'subtract', prompt: `Hoeveel is ${a} − ${b}?`, sub: 'Kies het goede antwoord 👇',
+      options: withWrongs(option(r, true), cands.slice(0, 1), cands.slice(1)) };
+  }
+  function factStep() {
+    const a = prob.rem, q = Math.floor(a / SET.d);
+    return { kind: 'fact', prompt: `Hoeveel is ${a} : ${SET.d}?`, sub: 'Kies het goede antwoord 👇',
+      options: divisionOptions(a, shuffle([q + 1, q - 1]).concat([q + 2, q - 2])) };
+  }
+  // only from memory ("Uit je hoofd"): with a hint list the answer is already on the worksheet
+  function finalStep() {
+    const n = prob.n, q = Math.floor(n / SET.d);
+    return { kind: 'final', prompt: `Hoeveel is ${n} : ${SET.d}?`, sub: 'Reken het uit en kies het goede antwoord 👇',
+      options: divisionOptions(n, shuffle([q + 10, q - 10, q + 1, q - 1, q + 100, q - 100])) };
+  }
+  function buildStep() {
+    if (warmIdx < warm.length) return hintStep(warm[warmIdx]);
+    if (prob && prob.complete) prob = null;
+    if (!prob) {
+      if (!queue.length) return null;
+      const p = queue[0];
+      useDivisor(p.d);
+      // "Zelf maken": the first time a divisor comes up, she first makes its hint list
+      if (level() === 'build' && !filled[p.d]) { filled[p.d] = new Set(); warm = SET.hints.slice(); warmIdx = 0; return hintStep(warm[0]); }
+      queue.shift();
+      prob = { n: p.n, d: p.d, repeat: p.repeat, rem: p.n, parts: [], lines: [{ num: p.n }], pending: 0, mistakes: 0, complete: false };
+    }
+    if (level() === 'mental') return finalStep();
+    if (prob.pending) return subtractStep();
+    if (prob.rem < 10 * SET.d || !SET.hints.some(m => m * SET.d <= prob.rem)) return factStep();
+    return chunkStep();
+  }
+  // the right answer was given: write it down
+  function applyStep() {
+    const d = SET.d;
+    step.done = true;
+    if (step.kind === 'hint') { (filled[SET.d] = filled[SET.d] || new Set()).add(step.m); warmIdx++; return; }
+    if (step.kind === 'chunk') { prob.pending = step.m; prob.lines.push({ minus: step.m * d, note: `${step.m} × ${d}` }); return; }
+    if (step.kind === 'subtract') { prob.rem -= prob.pending * d; prob.parts.push(prob.pending); prob.pending = 0; prob.lines.push({ num: prob.rem }); finishProblem(); return; }
+    if (step.kind === 'fact') {
+      const q = Math.floor(prob.rem / d);
+      prob.lines[prob.lines.length - 1].fact = step.options.find(o => o.ok).label;
+      prob.parts.push(q); prob.rem -= q * d;
+      finishProblem(); return;
+    }
+    finishProblem();
+  }
+  // the sum is done: one with mistakes comes back once, 2 sums later.
+  // With a hint list that's right after the last part (the answer is on the worksheet then);
+  // from memory it's after the one question
+  function finishProblem() {
+    if (level() !== 'mental' && (prob.pending || prob.rem >= SET.d)) return;
+    const d = SET.d, clean = prob.mistakes === 0;
+    if (clean || prob.repeat) solved++;
+    if (clean && !prob.repeat) firstRight++;
+    if (!clean && !prob.repeat) queue.splice(Math.min(2, queue.length), 0, { n: prob.n, d: prob.d, repeat: true });
+    if (level() === 'mental') { prob.parts = [Math.floor(prob.n / d)]; prob.rem = prob.n % d; }
+    prob.complete = true;
+  }
+  const fullAnswer = () => { const q = Math.floor(prob.n / SET.d), r = prob.n % SET.d; return r ? `${q} rest ${r}` : String(q); };
+  const sumDone = () => !!(prob && prob.complete);
+  const rightTitle = gain => sumDone()
+    ? `Goed zo! ${prob.n} : ${SET.d} = ${fullAnswer()} 🎉${gain ? '  +' + gain : ''}`
+    : `Goed zo!${gain ? '  +' + gain : ''}`;
+
+  // ---------- game logic ----------
+  let phase = 'start', mode = 'calm', total = 0, queue = [], prob = null, step = null, stepNo = 0;
+  let warm = [], warmIdx = 0, filled = {}, stepWrong = 0;   // filled: per divisor, the hint rows she made
+  let score = 0, streak = 0, solved = 0, firstRight = 0, locked = false, waitBtn = null;
+  let hearts = 0, waitCreature = null, keepMonsters = false;
+  function setLayout() {
+    place();
+    if (!renderer.xr.isPresenting) resize();
+  }
+  const at = (obj, x, y, sc, dz) => { obj.mesh.position.set(x, y, Z + (dz || 0)); obj.mesh.quaternion.identity(); obj.base = sc; obj.mesh.scale.setScalar(sc); };
+  // puts every panel and button where it belongs for the current layout and screen
+  function place() {
+    const mon = mode === 'monsters' && phase === 'question';
+    if (!tall) {
+      at(Q, 0, mon ? 2.78 : 2.02, mon ? 0.8 : 1);
+      at(S, 0, mon ? 3.4 : 2.74, 1);
+      at(homeBtn, -0.7, mon ? 3.56 : 2.9, 1, 0.08);
+      levelBtns.forEach((b, i) => at(b, (i - 1) * 0.65, 1.25, 1, 0.08));
+      at(calmBtn, -0.51, 0.96, 1, 0.08); at(monBtn, 0.51, 0.96, 1, 0.08);
+      // toggle buttons on the start panel (top 2.62 m, 1.96 m per 1280 px)
+      const y = px => 2.62 - px * 1.96 / 1280;
+      divBtns.forEach((b, i) => at(b, (i - (divBtns.length - 1) / 2) * 0.195, y(PICK_ROWS.wide[0]), 1, 0.08));
+      rangeBtns.forEach((b, i) => at(b, (i - (rangeBtns.length - 1) / 2) * 0.55, y(PICK_ROWS.wide[1]), 1, 0.08));
+      at(continueBtn, 0, mon ? 2.12 : 0.9, 1, 0.1);
+    } else {
+      at(Q, 0, mon ? 3.0 : 2.0, mon ? 0.8 : 1);
+      at(S, 0, mon ? 3.7 : 2.79, 0.72);
+      at(homeBtn, -0.3, mon ? 3.86 : 2.95, 0.9, 0.08);
+      // the level buttons cover the lower part of the start panel, one under the other
+      levelBtns.forEach((b, i) => at(b, 0, 1.86 - i * 0.215, 0.92, 0.08));
+      at(calmBtn, 0, 1.1, 0.9, 0.08); at(monBtn, 0, 0.82, 0.9, 0.08);
+      // toggle buttons on the start panel: the divisors in two rows of at most 5, the ranges in one row
+      const y = px => TALL_TOP - px * TALL_MPP, perRow = Math.ceil(divBtns.length / 2);
+      divBtns.forEach((b, i) => {
+        const row = i < perRow ? 0 : 1, n = row ? divBtns.length - perRow : perRow, k = row ? i - perRow : i;
+        at(b, (k - (n - 1) / 2) * 0.19, y(PICK_ROWS.tall[row]), 1, 0.08);
+      });
+      rangeBtns.forEach((b, i) => at(b, (i - (rangeBtns.length - 1) / 2) * 0.36, y(PICK_ROWS.tall[2]), 0.68, 0.08));
+      at(continueBtn, 0, mon ? 2.25 : 0.91, 1.1, 0.1);
+    }
+    levelBtns.forEach(b => b.mesh.visible = calmBtn.mesh.visible && (!tall || phase === 'start'));
+    if (mon && !renderer.xr.isPresenting) placeHud();
+    placeAnswers();
+    homeBtn.draw(phase === 'start' ? '🏠 Alle spellen' : '🏠 Start', 'idle');
+  }
+  // Monsters (not in VR): the panel, score and buttons hang just in front of the camera at the top of the
+  // screen (like a sticker on the glass), so the panel stays big while the monsters walk in below it.
+  function placeHud() {
+    const D = 1.0, viewH = 2 * D * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)), viewW = viewH * camera.aspect;
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion), up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    const put = (obj, x, y, sc) => {
+      obj.mesh.position.copy(camera.position).addScaledVector(right, x).addScaledVector(up, y).addScaledVector(fwd, D);
+      obj.mesh.quaternion.copy(camera.quaternion); obj.base = sc; obj.mesh.scale.setScalar(sc);
+    };
+    const [PW, PH] = tall ? [1.1, 1.42] : [1.96, 1.2];
+    const pw = Math.min(0.86 * viewW, 0.5 * viewH * PW / PH), ps = pw / PW, ph = PH * ps;   // the panel
+    const sw = pw * 0.72, ss = sw / 1.5, hw = pw * 0.25, hs = hw / 0.5;  // score bar and home button
+    const top = viewH / 2 - 0.012 * viewH, rowH = Math.max(0.19 * ss, 0.12 * hs), gap = 0.008 * viewH;
+    put(homeBtn, -pw / 2 + hw / 2, top - rowH / 2, hs);
+    put(S, pw / 2 - sw / 2, top - rowH / 2, ss);
+    const py = top - rowH - gap - ph / 2;
+    put(Q, 0, py, ps);
+    const cs = (tall ? 0.5 : 0.3) * pw / 0.7; put(continueBtn, 0, py - ph / 2 - 2 * gap - 0.24 * cs / 2, cs);   // a normal-sized button just under the panel
+    hudBottom = (py - ph / 2) / (viewH / 2);   // in screen units (-1 bottom … 1 top), for the camera tilt
+  }
+  let hudBottom = 0;
+  // one row under the panel (wide) or 2 × 2 (tall); on a phone the "Volgende" button takes their place
+  function placeAnswers() {
+    const n = step && phase === 'question' ? step.options.length : 0, done = tall && continueBtn.mesh.visible;
+    answerBtns.forEach((b, i) => {
+      if (tall) at(b, i % 2 ? 0.275 : -0.275, i < 2 ? 1.08 : 0.74, 1.1, 0.08);
+      else at(b, (i - (n - 1) / 2) * 0.48, 1.22, 1, 0.08);
+      b.mesh.visible = mode === 'calm' && i < n && !done;
+    });
+  }
+  // the layout follows the screen: tall on a phone held upright, wide everywhere else (and always in VR)
+  function checkLayout() {
+    const t = !renderer.xr.isPresenting && camera.aspect < 0.9;
+    if (Q && t === tall) return;
+    tall = t; buildPanel(); place(); redraw();
+  }
+  function redraw() {
+    if (phase === 'start') drawStart();
+    else if (phase === 'question' && step) drawPlay(lastFb);
+    else if (phase === 'end' && lastEnd) drawEnd(...lastEnd);
+  }
+  const sheetMode = () => mode === 'calm' ? 'rustig' : mode;   // the sheet keeps its Dutch values
+
+  // timeouts that move the game on are dropped when the player has gone home in the meantime
+  let gen = 0;
+  const later = (fn, ms) => { const g = gen; setTimeout(() => { if (g === gen) fn(); }, ms); };
+  function goHome() {
+    gen++; queue = []; prob = null; step = null; locked = false; waitBtn = null; endedAt = performance.now();
+    showStart();
+  }
+  function showStart() {
+    phase = 'start'; continueBtn.mesh.visible = false;
+    answerBtns.forEach(b => b.mesh.visible = false);
+    clearCreatures(); showModeButtons(true);
+    S.mesh.visible = false; setLayout(); drawStart();
+  }
+  function newGame(m) {
+    note.hidden = true;   // the 'how to play' hint has done its job once a game starts
+    mode = m === 'monsters' ? 'monsters' : 'calm';
+    hearts = Math.max(1, Math.round(Number(LIVES) || 3));
+    logGame('spel-gestart', { l: setName(), m: sheetMode(), lv: LEVELS[levelIdx].sheet });
+    queue = makeProblems(); total = queue.length;
+    warm = []; warmIdx = 0; filled = {};
+    prob = null; keepMonsters = false; score = 0; streak = 0; solved = 0; firstRight = 0; locked = false; waitBtn = null;
+    phase = 'question'; showModeButtons(false); S.mesh.visible = true; setLayout();
+    startedAt = performance.now(); endedAt = 0; lastShownSec = -1; pausedAt = 0; pausedTotal = 0;
+    nextStep();
+  }
+  function nextStep() {
+    step = buildStep();
+    if (!step) return endGame();
+    stepNo++; stepWrong = 0; locked = false; waitBtn = null; waitCreature = null; continueBtn.mesh.visible = false;
+    const opts = step.options;
+    if (mode === 'monsters') {
+      answerBtns.forEach(b => b.mesh.visible = false);
+      // the next part of the same sum: the knocked-back monsters get the new answers
+      if (keepMonsters && creatures.length === opts.length && creatures.every(cr => cr.alive)) relabelCreatures();
+      else spawnCreatures();
+      keepMonsters = false;
+      drawPlay(null); drawScore();
+      return;
+    }
+    placeAnswers();
+    opts.forEach((o, i) => { answerBtns[i].enabled = true; answerBtns[i].draw(o.label, 'idle'); });
+    drawPlay(null); drawScore();
+  }
+  // points: right the first time 10 (+ streak bonus), on the second try 3, after being shown the answer 0
+  function gainRight() {
+    const gain = stepWrong === 0 ? 10 + Math.min(streak, 5) * 2 : stepWrong === 1 ? 3 : 0;
+    score += gain; if (stepWrong === 0) streak++;
+    return gain;
+  }
+  function countWrong() { streak = 0; stepWrong++; if (prob && step.kind !== 'hint') prob.mistakes++; }
+  function celebrate(obj) {
+    sfx('good'); buzz(0.5, 80); burst(obj);
+    if (sumDone()) { setTimeout(() => burst(Q.mesh), 250); }
+  }
+  // a sum is done: the whole answer stays on screen and the clock stops until she clicks "Volgende"
+  function showSumDone(good, gain) {
+    locked = true; waitBtn = null; waitCreature = null;
+    pauseClock();
+    const title = good ? rightTitle(gain) : `Zo is het: ${prob.n} : ${SET.d} = ${fullAnswer()}`;
+    drawPlay({ good, title, sub: 'Lees het rustig na en klik dan op Volgende.' }); drawScore();
+    const last = warmIdx >= warm.length && !queue.length;
+    continueBtn.draw(last ? 'Naar de uitslag ▶' : 'Volgende ▶', 'start'); continueBtn.mesh.visible = true;
+    place();
+  }
+  function answer(btn) {
+    if (phase !== 'question') return;
+    if (waitBtn) {
+      if (btn !== waitBtn) return;
+      sfx('click'); applyStep();
+      if (sumDone()) showSumDone(false); else nextStep();
+      return;
+    }
+    if (locked || !btn.enabled) return;
+    const opts = step.options, o = opts[btn.index], correctBtn = answerBtns[opts.findIndex(x => x.ok)];
+    if (o.ok) {
+      locked = true;
+      const gain = gainRight(); applyStep();
+      answerBtns.forEach((b, i) => { if (i < opts.length) b.draw(opts[i].label, b === btn ? 'good' : 'dim'); });
+      celebrate(btn.mesh);
+      if (sumDone()) { showSumDone(true, gain); return; }
+      drawPlay({ good: true, title: rightTitle(gain) }); drawScore();
+      later(nextStep, 1100);
+      return;
+    }
+    countWrong(); sfx('bad'); buzz(0.9, 160);
+    if (stepWrong === 1) {
+      // first mistake: that button is out, try again (it does count as a mistake)
+      btn.enabled = false; btn.draw(o.label, 'bad');
+      drawPlay({ good: false, title: 'Nog niet goed. Probeer het nog eens!', why: o.why }); drawScore();
+      return;
+    }
+    answerBtns.forEach((b, i) => { if (i < opts.length) b.draw(opts[i].label, b === btn ? 'bad' : b === correctBtn ? 'good' : 'dim'); });
+    drawPlay({ good: false, title: 'Oeps! Het goede antwoord is groen. Kies de groene knop.', why: o.why }); drawScore();
+    waitBtn = correctBtn;
+  }
+  function endGame(lost) {
+    endedAt = performance.now();
+    const secs = elapsed();
+    logGame(lost ? 'spel-verloren' : 'spel-klaar', { l: setName(), m: sheetMode(), lv: LEVELS[levelIdx].sheet, goed: lost ? solved : firstRight, n: total, t: secs });
+    phase = 'end';
+    let newBest = false, newTime = false;
+    if (score > best) { best = score; newBest = true; try { localStorage.setItem(setKey() + '-score', String(best)); } catch (e) {} }
+    const bt = bestTime(mode);
+    if (!lost && (!bt || secs < bt)) { newTime = true; try { localStorage.setItem(timeKey(mode), String(secs)); } catch (e) {} }
+    // only finished games count for the progress chart (not being caught by the monsters)
+    const progress = lost ? null : recordResult(timeKey(mode), { good: firstRight, n: total, secs, score });
+    answerBtns.forEach(b => b.mesh.visible = false); continueBtn.mesh.visible = false;
+    clearCreatures(); showModeButtons(true); setLayout();
+    drawEnd(newBest, newTime, secs, lost, progress); drawScore();
+    if (lost) { sfx('bad'); return; }
+    sfx('win'); if (firstRight >= Math.ceil(total * 0.75)) { burst(Q.mesh); setTimeout(() => burst(Q.mesh), 300); }
+  }
+
+  // ---------- monsters ----------
+  const creatures = [];
+  const SIGN = { idle: ['#fffaf0', '#2a2a3a', '#c9b48a'], good: ['#46e591', '#0b3a20', '#16a058'], bad: ['#ff7477', '#3a0b0b', '#cc2d33'] };
+  function drawSign(cr, state) {
+    const { ctx, c } = cr.sign, [bg, fg, edge] = SIGN[state];
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.fillStyle = bg; rr(ctx, 6, 6, c.width - 12, c.height - 12, 30); ctx.fill();
+    ctx.strokeStyle = edge; ctx.lineWidth = 10; ctx.stroke();
+    ctx.fillStyle = fg; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const f = fitLines(ctx, cr.text, c.width - 80, 3, 160, 900, 40), lh = f.size * 1.12, y0 = c.height / 2 - (f.lines.length - 1) * lh / 2;
+    f.lines.forEach((l, i) => ctx.fillText(l, c.width / 2, y0 + i * lh));
+    cr.sign.update();
+  }
+  function makeCreature(i, opt) {
+    const g = new THREE.Group(), body = THEME.monster(THREE, i); g.add(body);
+    const cr = { g, body, opt, text: opt.label, alive: true, state: 'walk', r: 7, angle: 0, wait: 0, melt: 0, hitShake: 0, phase: Math.random() * 6 };
+    cr.sign = canvasPlane(SIGN_W, SIGN_H, 1024); cr.sign.mesh.position.set(0.12, 1.7, 0.05); g.add(cr.sign.mesh);
+    drawSign(cr, 'idle');
+    g.traverse(m => { if (m.isMesh) m.userData.creature = cr; });
+    return cr;
+  }
+  function relabelCreatures() {
+    creatures.forEach((cr, i) => { cr.opt = step.options[i]; cr.text = cr.opt.label; drawSign(cr, 'idle'); });
+  }
+  // a part of the sum is done: all monsters tumble backwards, lie down a moment and get up again
+  function knockBack() {
+    creatures.forEach(cr => { if (cr.alive) { cr.state = 'fall'; cr.fallT = 0; cr.hitShake = 0; } });
+  }
+  function clearCreatures() {
+    creatures.forEach(cr => { ui.remove(cr.g); cr.sign.mesh.material.map.dispose(); cr.sign.mesh.material.dispose(); });
+    creatures.length = 0; waitCreature = null;
+  }
+  // signs are big while far away and shrink as they come closer, never wider than the space between two monsters;
+  // when they still don't fit side by side, every other sign moves up so they don't cover each other
+  const SIGN_W = 1.3, SIGN_H = 0.8;
+  // phone: the monsters walk in two columns, two per column: one in front with the lower sign and one
+  // a bit further back (and more to the side) with the higher sign. Each keeps its place on the screen
+  // (walking straight at the camera), so the signs form a 2 × 2 grid and can be almost half the screen wide.
+  const PHONE_SIGN = 0.45, PHONE_BACK = 0.8;   // sign width as part of the screen width; how far back the second row walks
+  const phoneSignScale = depth => PHONE_SIGN * 2 * depth * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect / SIGN_W;
+  function placeCreature(cr) {
+    if (tall) {
+      const row = cr.slot >= 2 ? 1 : 0, side = cr.slot % 2 ? 1 : -1, back = row * PHONE_BACK;
+      const depth = camera.position.z + cr.r + back, halfW = depth * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect;
+      const x = side * (row ? 0.62 : 0.38) * halfW, s = phoneSignScale(depth);
+      cr.g.position.set(x, -(cr.sink || 0), -(cr.r + back)); cr.g.rotation.y = Math.atan2(-x, depth);
+      cr.sign.mesh.scale.set(s, s, 1); cr.sign.mesh.position.x = side * 0.5 * halfW - x;   // the sign sits in its column
+      cr.sign.mesh.position.y = 1.38 + SIGN_H * s / 2 + row * SIGN_H * s * 1.06;
+      return;
+    }
+    const x = Math.sin(cr.angle) * cr.r, z = -Math.cos(cr.angle) * cr.r;
+    cr.g.position.set(x, -(cr.sink || 0), z); cr.g.rotation.y = Math.atan2(-x, -z);
+    const room = 2 * cr.r * Math.sin(cr.gap / 2) * 0.95 / SIGN_W;
+    const s = Math.max(0.45, Math.min(1.5, Math.max(0.5, cr.r / 4.5), room));
+    const crowded = Math.max(0, Math.min(1, 1 - room / s));
+    cr.sign.mesh.scale.set(s, s, 1);
+    cr.sign.mesh.position.y = 1.38 + SIGN_H * s / 2 + (cr.slot % 2 ? crowded * SIGN_H * s * 1.05 : 0);
+  }
+  function spawnCreatures() {
+    clearCreatures();
+    const vr = renderer.xr.isPresenting, opts = step.options;
+    // on a flat screen keep them inside the view, also in portrait
+    const halfH = THREE.MathUtils.radToDeg(Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect));
+    const k = vr ? 1 : Math.min(1, (halfH * 0.75) / 24);
+    const angles = (vr ? [-60, -20, 20, 60] : [-24, -8, 8, 24]).map(a => a * k).slice(0, opts.length);
+    // sums need thinking time: a bit slower than the word game
+    const walkSecs = (step.kind === 'hint' ? 16 : 22) / Math.max(0.2, Number(MONSTER_SPEED) || 1);
+    const speed = (7 - 0.9) / walkSecs;
+    opts.forEach((opt, i) => {
+      const cr = makeCreature(i, opt);
+      cr.angle = THREE.MathUtils.degToRad(angles[i]);
+      cr.slot = i; cr.lane = (i - (opts.length - 1) / 2) * 0.5; cr.gap = Math.min(...angles.filter((_, j) => j !== i).map(a => THREE.MathUtils.degToRad(Math.abs(a - angles[i]))), Math.PI);
+      cr.speed = speed; cr.wait = 3;
+      placeCreature(cr); ui.add(cr.g); creatures.push(cr);
+    });
+  }
+  // melting (or crumbling, see themeCrumble): the monster sinks into the ground, droops a little, its sign tips over and a puddle spreads out
+  const puddles = [];
+  const puddleGeo = new THREE.CircleGeometry(0.4, 28);
+  function meltOthers(keep) {
+    creatures.forEach(cr => {
+      if (cr === keep || !cr.alive) return;
+      cr.alive = false; cr.state = 'melt'; cr.melt = 0; cr.sink = 0;
+      cr.sign.mesh.material.transparent = true;
+      if (C.defeat === 'crumble') { themeCrumble(THREE, ui, cr.body); cr.body.visible = false; cr.crumble = true; return; }
+      const pd = new THREE.Mesh(puddleGeo, new THREE.MeshBasicMaterial({ color: C.puddle, transparent: true, opacity: 0.75, depthWrite: false }));
+      pd.rotation.x = -Math.PI / 2; pd.position.set(cr.g.position.x, 0.012, cr.g.position.z); pd.scale.setScalar(0.2);
+      ui.add(pd); puddles.push({ m: pd, t: 0 });
+    });
+  }
+  function updatePuddles(dt) {
+    themeUpdateShards(dt);
+    for (let i = puddles.length - 1; i >= 0; i--) {
+      const p = puddles[i]; p.t += dt;
+      p.m.scale.setScalar(0.2 + Math.min(1, p.t / 1.1) * 1.1);
+      if (p.t > 1.4) p.m.material.opacity = Math.max(0, 0.75 - (p.t - 1.4) * 0.6);
+      if (p.t > 2.7) { ui.remove(p.m); p.m.material.dispose(); puddles.splice(i, 1); }
+    }
+  }
+  // the monster that was hit: gone in a puff, or (gingerbread) blown to pieces
+  function hitGone(cr) {
+    if (C.defeat === 'crumble') themeCrumble(THREE, ui, cr.body, 1.8);
+    cr.alive = false; cr.state = 'gone'; cr.g.visible = false;
+  }
+  function shootCreature(cr, point) {
+    if (phase !== 'question' || mode !== 'monsters' || !cr.alive) return;
+    if (waitCreature) {
+      if (cr === waitCreature) {
+        hitGone(cr); snowPuff(point || cr.g.position); sfx('click'); applyStep();
+        if (sumDone()) showSumDone(false); else nextStep();
+      }
+      return;
+    }
+    if (locked) return;
+    if (cr.opt.ok) {
+      locked = true;
+      const gain = gainRight(); applyStep();
+      const last = sumDone();
+      const p = new THREE.Vector3(); cr.sign.mesh.getWorldPosition(p);
+      celebrate(p); snowPuff(p); snowPuff(cr.g.localToWorld(new THREE.Vector3(0, 0.8, 0)));
+      if (last) { hitGone(cr); meltOthers(null); }
+      else { drawSign(cr, 'good'); knockBack(); keepMonsters = true; }
+      if (last) { showSumDone(true, gain); return; }
+      drawPlay({ good: true, title: `Raak! 🎯${gain ? '  +' + gain : ''}` }); drawScore();
+      later(nextStep, 1100);
+    } else {
+      // keep throwing until you hit the right one; every miss counts as a mistake
+      countWrong();
+      drawSign(cr, 'bad'); cr.r = Math.max(1.0, cr.r - 0.8); cr.hitShake = 0.5; placeCreature(cr);
+      drawPlay({ good: false, title: 'Nee hoor! Dat is niet goed.', why: cr.opt.why }); drawScore();
+      sfx('bad'); buzz(0.9, 160);
+    }
+  }
+  function creatureReached() {
+    locked = true; countWrong(); hearts--;
+    sfx('boing'); buzz(1, 300);
+    const good = creatures.find(cr => cr.opt.ok);
+    meltOthers(good);
+    if (hearts <= 0) { drawPlay({ good: false, title: 'Au! Je levens zijn op.' }); drawScore(); later(() => endGame(true), 1800); return; }
+    good.state = 'back'; good.wait = 0; drawSign(good, 'good');
+    waitCreature = good; locked = false;
+    drawPlay({ good: false, title: 'Au! Gooi naar het groene bord.' }); drawScore();
+  }
+  function updateCreatures(dt, t) {
+    updatePuddles(dt);
+    if (!creatures.length) return;
+    let reached = false;
+    creatures.forEach(cr => {
+      if (cr.state === 'walk') {
+        if (cr.wait > 0) cr.wait -= dt;
+        else if (!locked && !waitCreature) { cr.r -= cr.speed * dt; if (cr.r <= 0.9) reached = true; }
+        cr.body.position.y = Math.abs(Math.sin(t * 5 + cr.phase)) * 0.05;
+        cr.body.rotation.z = Math.sin(t * 5 + cr.phase) * 0.06;
+      } else if (cr.state === 'fall') {
+        cr.fallT += dt; const f = cr.fallT;
+        if (f < 0.5) cr.r = Math.min(7, cr.r + dt * 3.2);              // pushed back about 1.6 m
+        const tilt = f < 0.35 ? f / 0.35 : f < 0.95 ? 1 : Math.max(0, 1 - (f - 0.95) / 0.5);
+        cr.body.rotation.x = -tilt * 1.35;                            // falls on its back…
+        cr.body.position.y = f > 0.95 && f < 1.45 ? Math.sin((f - 0.95) / 0.5 * Math.PI) * 0.12 : 0;   // …and hops up again
+        if (f >= 1.45) { cr.state = 'walk'; cr.wait = 0.5; cr.body.rotation.x = 0; }
+      } else if (cr.state === 'back') {
+        cr.r = Math.min(2.2, cr.r + dt * 3);
+        const s = 1.04 + Math.sin(t * 7) * 0.04; cr.g.scale.set(s, s, s);
+      } else if (cr.state === 'melt') {
+        cr.melt += dt / 1.1; const e = Math.min(1, cr.melt), ease = e * e;
+        if (!cr.crumble) {   // pieces fly off by themselves (themeCrumble)
+          cr.sink = ease * 1.45;                                   // slides down into the ground
+          cr.body.rotation.x = -e * 0.35;                          // droops forward a bit
+          cr.body.scale.setScalar(1 - e * 0.25);
+        }
+        cr.sign.mesh.rotation.x = -e * 1.2;                      // sign tips over
+        cr.sign.mesh.material.opacity = 1 - e;
+        if (cr.melt >= 1) { cr.state = 'gone'; cr.g.visible = false; }
+      }
+      if (cr.hitShake > 0) { cr.hitShake -= dt; cr.body.rotation.y = Math.sin(t * 40) * 0.25 * cr.hitShake; } else cr.body.rotation.y = 0;
+      placeCreature(cr);
+    });
+    if (reached && phase === 'question' && !locked && !waitCreature) creatureReached();
+  }
+
+  // ---------- sound ----------
+  let actx = null;
+  function ensureAudio() { try { if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); } catch (e) {} }
+  function tone(f, t0, dur, type, vol) {
+    if (!actx) return;
+    const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime + t0;
+    o.type = type; o.frequency.setValueAtTime(f, t);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur + 0.05);
+  }
+  function sfx(kind) {
+    ensureAudio();
+    if (kind === 'click') tone(620, 0, 0.12, 'sine', 0.15);
+    if (kind === 'good') { tone(660, 0, 0.18, 'triangle', 0.22); tone(880, 0.1, 0.18, 'triangle', 0.22); tone(1320, 0.2, 0.3, 'triangle', 0.2); }
+    if (kind === 'bad') { tone(260, 0, 0.22, 'square', 0.07); tone(196, 0.16, 0.32, 'square', 0.07); }
+    if (kind === 'boing') { tone(330, 0, 0.18, 'sine', 0.3); tone(220, 0.1, 0.22, 'sine', 0.28); tone(150, 0.22, 0.3, 'sine', 0.25); }
+    if (kind === 'win') [523, 659, 784, 1047].forEach((f, i) => tone(f, i * 0.13, 0.35, 'triangle', 0.2));
+  }
+  function noiseBurst(dur, f0, f1, vol) {
+    if (!actx) return;
+    const len = Math.floor(actx.sampleRate * dur), buf = actx.createBuffer(1, len, actx.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    const src = actx.createBufferSource(); src.buffer = buf;
+    const bp = actx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 1.2;
+    const t = actx.currentTime, g = actx.createGain();
+    bp.frequency.setValueAtTime(f0, t); bp.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + dur * 0.2); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(bp).connect(g).connect(actx.destination); src.start(t); src.stop(t + dur + 0.02);
+  }
+
+  // ---------- confetti ----------
+  const parts = [];
+  const partGeo = new THREE.OctahedronGeometry(0.022);
+  const partMats = C.confetti.map(c => new THREE.MeshBasicMaterial({ color: c, transparent: true, fog: false }));
+  function burst(obj) {
+    const p = new THREE.Vector3(); if (obj && obj.isVector3) p.copy(obj); else obj.getWorldPosition(p);
+    for (let i = 0; i < 36; i++) {
+      const m = new THREE.Mesh(partGeo, partMats[i % partMats.length].clone()); m.position.copy(p);
+      m.userData.v = new THREE.Vector3((Math.random() - 0.5) * 2.2, Math.random() * 2 + 0.6, (Math.random() - 0.3) * 1.4);
+      m.userData.life = 1.2; scene.add(m); parts.push(m);
+    }
+  }
+
+  // ---------- input ----------
+  const raycaster = new THREE.Raycaster();
+  const tmpM = new THREE.Matrix4(), tmpV = new THREE.Vector3(), tmpD = new THREE.Vector3();
+  function hitFromRay() {
+    const list = interactive.filter(m => m.visible);
+    creatures.forEach(cr => { if (cr.alive) cr.g.traverse(m => { if (m.isMesh) list.push(m); }); });
+    const hits = raycaster.intersectObjects(list, false); return hits.length ? hits[0] : null;
+  }
+  function selectHit(hit) {
+    if (!hit) return;
+    if (hit.object.userData.creature) { shootCreature(hit.object.userData.creature, hit.point); return; }
+    const b = hit.object.userData.btn; if (b && b.enabled && b.onSelect) b.onSelect();
+  }
+
+  const controllers = [];
+  let lastSource = null;
+  for (let i = 0; i < 2; i++) {
+    const c = renderer.xr.getController(i);
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]),
+      new THREE.LineBasicMaterial({ color: C.ray, transparent: true, opacity: 0.8 }));
+    line.scale.z = 4; c.add(line);
+    const dot = new THREE.Mesh(new THREE.SphereGeometry(0.015, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false })); dot.visible = false; scene.add(dot);
+    c.userData = { line, dot, src: null };
+    c.addEventListener('connected', e => { c.userData.src = e.data; });
+    c.addEventListener('disconnected', () => { c.userData.src = null; dot.visible = false; });
+    c.addEventListener('select', () => throwSnowball(c));
+    scene.add(c); controllers.push(c);
+    const grip = renderer.xr.getControllerGrip(i);
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.03, 0.12), new THREE.MeshLambertMaterial({ color: 0xdfe8ff })); body.position.z = 0.02; grip.add(body); scene.add(grip);
+  }
+  function rayFromController(c) {
+    tmpM.identity().extractRotation(c.matrixWorld);
+    raycaster.ray.origin.setFromMatrixPosition(c.matrixWorld);
+    raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tmpM);
+  }
+  function buzz(intensity, ms) { try { const h = lastSource && lastSource.gamepad && lastSource.gamepad.hapticActuators; if (h && h[0]) h[0].pulse(intensity, ms); } catch (e) {} }
+
+  // ---------- snowballs (VR only) ----------
+  const snowballs = [];
+  const ballGeo = new THREE.SphereGeometry(0.035, 16, 12), ballMat = new THREE.MeshLambertMaterial({ color: C.ball, emissive: C.ballGlow });
+  const puffGeo = new THREE.IcosahedronGeometry(0.018, 0), puffMats = C.puff.map(c => new THREE.MeshBasicMaterial({ color: c, transparent: true, fog: false }));
+  const stateKey = () => `${phase}|${stepNo}`;
+  function snowPuff(point) {
+    for (let i = 0; i < 16; i++) {
+      const m = new THREE.Mesh(puffGeo, puffMats[i % puffMats.length].clone()); m.position.copy(point);
+      m.userData.v = new THREE.Vector3((Math.random() - 0.5) * 1.6, Math.random() * 1.2, (Math.random() - 0.2) * 1.2);
+      m.userData.life = 0.7; scene.add(m); parts.push(m);
+    }
+  }
+  function throwSnowball(c) {
+    ensureAudio(); lastSource = c.userData.src;
+    rayFromController(c);
+    const hit = hitFromRay();
+    const from = raycaster.ray.origin.clone().addScaledVector(raycaster.ray.direction, 0.08);
+    const to = hit ? hit.point.clone() : raycaster.ray.origin.clone().addScaledVector(raycaster.ray.direction, 6);
+    const dist = from.distanceTo(to), ball = new THREE.Mesh(ballGeo, ballMat);
+    ball.position.copy(from); scene.add(ball);
+    snowballs.push({ ball, from, to, t: 0, dur: Math.max(0.18, dist / 7), arc: Math.min(0.35, dist * 0.08), hit, key: stateKey() });
+    noiseBurst(0.22, 900, 2500, 0.18); buzz(0.25, 30);
+  }
+  function updateSnowballs(dt) {
+    for (let i = snowballs.length - 1; i >= 0; i--) {
+      const s = snowballs[i]; s.t += dt / s.dur; const k = Math.min(1, s.t);
+      s.ball.position.lerpVectors(s.from, s.to, k); s.ball.position.y += 4 * s.arc * k * (1 - k); s.ball.rotation.x += dt * 12;
+      if (k >= 1) {
+        scene.remove(s.ball); snowballs.splice(i, 1); snowPuff(s.to);
+        if (s.hit) { noiseBurst(0.14, 500, 180, 0.35); if (s.key === stateKey()) selectHit(s.hit); }
+      }
+    }
+  }
+
+  const mouse = new THREE.Vector2(); let mouseIn = false;
+  function setMouse(e) {
+    const r = renderer.domElement.getBoundingClientRect();
+    mouse.x = ((e.clientX - r.left) / r.width) * 2 - 1; mouse.y = -((e.clientY - r.top) / r.height) * 2 + 1; mouseIn = true;
+  }
+  renderer.domElement.addEventListener('pointermove', setMouse);
+  renderer.domElement.addEventListener('pointerleave', () => { mouseIn = false; });
+  renderer.domElement.addEventListener('pointerdown', e => {
+    if (renderer.xr.isPresenting) return;
+    ensureAudio(); setMouse(e); raycaster.setFromCamera(mouse, camera); selectHit(hitFromRay());
+  });
+
+  // ---------- VR session ----------
+  let session = null, needsPlace = false;
+  async function setupVR() {
+    const isHeadset = /OculusBrowser|Quest|Pico|Wolvic/i.test(navigator.userAgent);
+    let ok = false;
+    if (isHeadset) { try { ok = !!(navigator.xr && await navigator.xr.isSessionSupported('immersive-vr')); } catch (e) {} }
+    if (ok) { vrBtn.hidden = false; note.hidden = false; note.textContent = `Druk op "Speel in VR". Richt op een antwoord en gooi een ${W.ball} met de trekker.`; }
+    else vrBtn.hidden = true;   // no VR: nothing to explain, kids know how to tap
+  }
+  vrBtn.addEventListener('click', async () => {
+    ensureAudio();
+    if (session) { session.end(); return; }
+    try {
+      const s = await navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking'] });
+      s.addEventListener('end', () => { session = null; vrBtn.textContent = '🥽 Speel in VR'; ui.position.set(0, 0, 0); ui.rotation.set(0, 0, 0); resize(); });
+      await renderer.xr.setSession(s);
+      session = s; needsPlace = true; vrBtn.textContent = 'Stop VR'; checkLayout(); place();
+    } catch (e) { note.hidden = false; note.textContent = 'VR start niet. Open deze pagina direct in de Meta Quest-browser.'; }
+  });
+
+  // ---------- layout / loop ----------
+  // a phone held sideways gets "Draai je telefoon rechtop" (tablets, computers and VR don't)
+  const turnEl = document.getElementById('turn');
+  function checkTurn() {
+    const phone = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 600;
+    turnEl.hidden = !(phone && innerWidth > innerHeight && !renderer.xr.isPresenting);
+  }
+  function resize() {
+    checkTurn();
+    const w = app.clientWidth, h = app.clientHeight;
+    renderer.setSize(w, h, false); camera.aspect = w / h;
+    checkLayout();
+    const tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    if (mode === 'monsters' && phase === 'question') {
+      const dist = Math.max(3.6, 1.0 / (tanHalf * camera.aspect));
+      camera.position.set(0, 1.8, Z + dist);
+      // the panel covers the top of the screen; tilt the camera up so the top of the
+      // highest sign of a monster that's still far away (7 m) shows just under the panel
+      camera.updateProjectionMatrix(); camera.lookAt(0, 1.8, Z - 10); placeHud();
+      const far = Z + dist + 7 + (tall ? PHONE_BACK : 0), top = 1.38 + SIGN_H * (tall ? phoneSignScale(far) * 2.06 : 1.55);
+      const elev = Math.atan2(top - 1.8, far), want = Math.atan((hudBottom - 0.03) * tanHalf);
+      const pitch = elev - want;
+      camera.lookAt(0, 1.8 + Math.tan(pitch) * 10, Z + dist - 10); camera.updateProjectionMatrix();
+      placeHud(); return;
+    }
+    // start/end: everything from the set selector (y 0.58) up to the home button (y 2.96) must fit;
+    // during a game only the "Volgende" button (y 0.78) up to the home button, so it's a bit closer
+    // phone: from the lowest button up to the home button, 1.16 m wide
+    const playing = phase === 'question';
+    const lo = !tall ? (playing ? 0.74 : 0.76) : playing ? 0.56 : 0.66;
+    const hi = tall ? 3.08 : 3.05, wide = tall ? 1.16 : 2.06;
+    const dist = Math.max(((hi - lo) / 2) / tanHalf, (wide / 2) / (tanHalf * camera.aspect)), mid = (hi + lo) / 2;
+    camera.position.set(0, mid, Z + dist); camera.lookAt(0, mid, Z); camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', () => { if (!renderer.xr.isPresenting) resize(); });
+  resize();
+
+  const clock = new THREE.Clock();
+  renderer.setAnimationLoop(() => {
+    const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
+    if (renderer.xr.isPresenting && needsPlace) {
+      const xc = renderer.xr.getCamera(camera); xc.getWorldPosition(tmpV);
+      if (tmpV.y > 0.3) {
+        xc.getWorldDirection(tmpD); ui.rotation.y = Math.atan2(-tmpD.x, -tmpD.z);
+        ui.position.set(tmpV.x, Math.max(-0.7, Math.min(0.2, tmpV.y - 1.6)), tmpV.z); needsPlace = false;
+      }
+    }
+    const hovered = new Set();
+    if (renderer.xr.isPresenting) {
+      controllers.forEach(c => {
+        const { line, dot, src } = c.userData;
+        if (!src) { line.visible = false; return; }
+        line.visible = true; rayFromController(c);
+        const hit = hitFromRay();
+        if (hit) { hovered.add(hit.object); line.scale.z = hit.distance; dot.position.copy(hit.point); dot.visible = true; }
+        else { line.scale.z = 4; dot.visible = false; }
+      });
+    } else if (mouseIn) {
+      raycaster.setFromCamera(mouse, camera);
+      const hit = hitFromRay(); if (hit) hovered.add(hit.object);
+      renderer.domElement.style.cursor = hit ? 'pointer' : 'default';
+    }
+    interactive.forEach(m => {
+      const b = m.userData.btn;
+      let target = hovered.has(m) && b.state !== 'dim' && b.enabled && !locked ? 1.04 : 1;
+      if (b === waitBtn || b === continueBtn) target = 1.03 + Math.sin(t * 7) * 0.025;
+      target *= b.base;
+      const s = m.scale.x + (target - m.scale.x) * Math.min(1, dt * 14); m.scale.set(s, s, 1);
+    });
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i], v = p.userData.v;
+      v.y -= 3.2 * dt; p.position.addScaledVector(v, dt); p.rotation.x += dt * 6; p.rotation.y += dt * 4;
+      p.userData.life -= dt; p.material.opacity = Math.max(0, p.userData.life / 1.2);
+      if (p.userData.life <= 0) { scene.remove(p); p.material.dispose(); parts.splice(i, 1); }
+    }
+    updateScenery(dt, t);
+    if (phase === 'question') { const e = elapsed(); if (e !== lastShownSec) { lastShownSec = e; drawScore(); } }
+    updateSnowballs(dt);
+    updateCreatures(dt, t);
+    renderer.render(scene, camera);
+  });
+
+  loadPicks();
+  showStart();
+  setupVR();
+}
+</script>
+</body>
+</html>

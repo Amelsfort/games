@@ -62,13 +62,14 @@
     <div id="hudRow">
       <button id="vr" hidden>🥽 Speel in VR</button>
     </div>
-    <p id="note">Laden…</p>
+    <p id="note" hidden></p>
   </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="settings.js"></script>
 <script src="themes.js"></script>
+<script src="progress.js"></script>
 <script>
 /* =====================================================================
    MEMORY AIDS (shown to the players, so in Dutch)
@@ -432,15 +433,15 @@ function start() {
     const { ctx, c } = P, d = DATA[cur], cityMode = curDir === 'map-capital'; panelBg(ctx, c, 40);
     ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
     if (!fb) {
-      ctx.fillStyle = C.muted; ctx.font = `700 40px ${FONT}`;
-      ctx.fillText(cityMode ? 'Tik op de stip van de hoofdstad' : 'Tik op de kaart op het land', 512, 72);
+      ctx.fillStyle = C.muted; const t = cityMode ? 'Tik op de stip van de hoofdstad' : 'Tik op de kaart op het land';
+      fit(ctx, t, 920, 48, 800); ctx.fillText(t, 512, 74);
       const big = cityMode ? d.capital : d.country;
       ctx.fillStyle = C.accent; fit(ctx, big, 900, 84, 900); ctx.fillText(big, 512, 160);
     } else {
       ctx.fillStyle = fb.good ? '#5cf0a0' : '#ff9a9d'; fit(ctx, fb.title, 920, 54, 900); ctx.fillText(fb.title, 512, 80);
       const h = (hints[d.flag] || '').trim();
       const line = h ? '💡 ' + h : (cityMode ? `${d.capital} → ${d.country}` : `${d.country} → ${d.capital}`);
-      ctx.fillStyle = C.tip; fit(ctx, line, 920, 42, 700); ctx.fillText(line, 512, 152);
+      ctx.fillStyle = C.tip; fit(ctx, line, 940, 48, 800); ctx.fillText(line, 512, 154);
     }
     P.update();
   }
@@ -467,8 +468,8 @@ function start() {
     const { ctx, c } = Q; panelBg(ctx, c, 44);
     ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
     ctx.fillStyle = C.accent; fit(ctx, 'Hoofdsteden', c.width - 120, 104, 900); ctx.fillText('Hoofdsteden', 512, 118);
-    ctx.fillStyle = C.text; ctx.font = `700 40px ${FONT}`;
-    ctx.fillText('Weet jij bij elk land de hoofdstad?', 512, 180);
+    ctx.fillStyle = C.text; ctx.font = `800 46px ${FONT}`;
+    ctx.fillText('Weet jij bij elk land de hoofdstad?', 512, 182);
     ctx.strokeStyle = C.line; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(512, 215); ctx.lineTo(512, 500); ctx.stroke();
     // the flags of each region in rows of 4, above its button (button centres sit at x 245 and 779)
@@ -479,8 +480,8 @@ function start() {
         const x0 = cx - (inRow * fw + (inRow - 1) * gap) / 2;
         drawFlag(ctx, d.flag, x0 + (i % 4) * (fw + gap), 220 + row * (fh + gap), fw, fh);
       });
-      ctx.textAlign = 'center'; ctx.fillStyle = C.muted; ctx.font = `700 34px ${FONT}`;
-      ctx.fillText(bests[key] ? `Beste score: ${bests[key]}` : 'Wie haalt er 3 sterren?', cx, 480);
+      ctx.textAlign = 'center'; ctx.fillStyle = C.muted; const t = bests[key] ? `Beste score: ${bests[key]}` : 'Wie haalt er 3 sterren?';
+      fit(ctx, t, 470, 42, 800); ctx.fillText(t, cx, 482);
     });
     Q.update();
   }
@@ -510,28 +511,32 @@ function start() {
     ctx.beginPath(); ctx.moveTo(60, 250); ctx.lineTo(964, 250); ctx.stroke();
     ctx.textAlign = 'center';
     if (!fb) {
-      ctx.fillStyle = C.text; ctx.font = `700 46px ${FONT}`; ctx.fillText('Kies het goede antwoord 👇', 512, 370);
+      ctx.fillStyle = C.text; ctx.font = `800 54px ${FONT}`; ctx.fillText('Kies het goede antwoord 👇', 512, 372);
     } else {
       ctx.fillStyle = fb.good ? '#5cf0a0' : '#ff9a9d';
       fit(ctx, fb.title, 900, 58, 900); ctx.fillText(fb.title, 512, 325);
-      ctx.fillStyle = C.tip; ctx.font = `700 42px ${FONT}`;
+      ctx.fillStyle = C.tip;
       const h = (hints[d.flag] || '').trim();
-      if (h) wrap(ctx, '💡 ' + h, 880).slice(0, 3).forEach((l, i) => ctx.fillText(l, 512, 400 + i * 52));
+      if (h) { const f = fitLines(ctx, '💡 ' + h, 920, 3, 48, 800, 30); f.lines.forEach((l, i) => ctx.fillText(l, 512, 398 + i * f.size * 1.12)); }
       else { ctx.font = `800 54px ${FONT}`; ctx.fillText(toCountry ? `${d.capital} → ${d.country}` : `${d.country} → ${d.capital}`, 512, 430); }
     }
     Q.update();
   }
-  function drawEnd(newBest) {
+  function drawEnd(newBest, progress) {
     const { ctx, c } = Q; panelBg(ctx, c, 44);
     const stars = firstRight === total ? 3 : firstRight >= Math.ceil(total * 0.75) ? 2 : 1;
     ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
     ctx.fillStyle = C.accent; ctx.font = `900 96px ${FONT}`; ctx.fillText('Klaar! 🎉', 512, 125);
     [362, 512, 662].forEach((x, i) => starShape(ctx, x, 215, 56, i < stars));
     ctx.fillStyle = '#ffffff'; ctx.font = `800 52px ${FONT}`; ctx.fillText(`${firstRight} van ${total} meteen goed`, 512, 345);
-    ctx.fillStyle = C.muted; ctx.font = `700 42px ${FONT}`;
-    ctx.fillText(newBest ? `${score} punten, nieuw record! 🏆` : `${score} punten (beste: ${bests[region]})`, 512, 412);
-    ctx.fillStyle = C.text; ctx.font = `700 40px ${FONT}`;
-    ctx.fillText(stars === 3 ? 'Wauw, jij kent ze allemaal!' : stars === 2 ? 'Heel goed! Lukt 3 sterren ook?' : 'Goed geoefend! Nog een keer?', 512, 485);
+    ctx.fillStyle = C.muted; ctx.font = `800 48px ${FONT}`;
+    ctx.fillText(newBest ? `${score} punten, nieuw record! 🏆` : `${score} punten (beste: ${bests[region]})`, 512, 414);
+    ctx.fillStyle = C.text;
+    const cheer = stars === 3 ? 'Wauw, jij kent ze allemaal!' : stars === 2 ? 'Heel goed! Lukt 3 sterren ook?' : 'Goed geoefend! Nog een keer?';
+    const line = progress && progress.line ? progress.line : cheer;
+    if (progress && progress.line) ctx.fillStyle = '#5cf0a0';
+    fit(ctx, line, 940, 48, 800); ctx.fillText(line, 512, 492);
+    if (progress) drawProgress(ctx, 745, 26, 250, 240, progress.history, { font: FONT, muted: C.muted, accent: C.accent, line: C.line });
     Q.update();
   }
 
@@ -598,6 +603,7 @@ function start() {
     showStart();
   }
   function newGame() {
+    note.hidden = true;   // the 'how to play' hint has done its job once a game starts
     logGame('spel-gestart', region);
     // every country QUESTION_ROUNDS times, each time with a random question type from QUESTION_TYPES
     const types = (Array.isArray(QUESTION_TYPES) ? QUESTION_TYPES : []).map(t => TYPE_MAP[t]).filter(Boolean);
@@ -660,7 +666,7 @@ function start() {
     if (score > bests[region]) { bests[region] = score; newBest = true; try { localStorage.setItem(REGIONS[region].bestKey, String(score)); } catch (e) {} }
     setView('none');
     startBtn.mesh.visible = true; startBtn.draw('Nog een keer ▶', 'start');
-    drawEnd(newBest); drawScore();
+    drawEnd(newBest, recordResult('capitals-' + region, { good: firstRight, n: total, secs: null, score })); drawScore();
     sfx('win'); if (firstRight >= Math.ceil(total * 0.75)) { burst(Q.mesh); setTimeout(() => burst(Q.mesh), 300); }
   }
 
@@ -827,10 +833,10 @@ function start() {
     }
     if (ok) {
       vrBtn.hidden = false;
+      note.hidden = false;
       note.textContent = 'Druk op "Speel in VR". Richt de straal op een antwoord en druk op de trekker.';
     } else {
-      vrBtn.hidden = true;
-      note.textContent = 'Klik of tik op een antwoord om te spelen.';
+      vrBtn.hidden = true;   // no VR: nothing to explain, kids know how to tap
     }
   }
   vrBtn.addEventListener('click', async () => {
@@ -842,7 +848,7 @@ function start() {
       await renderer.xr.setSession(s);
       session = s; needsPlace = true; vrBtn.textContent = 'Stop VR';
     } catch (e) {
-      note.textContent = 'VR start niet binnen deze ingesloten pagina. Open het spel los via de VR-link op de site en probeer opnieuw.';
+      note.hidden = false; note.textContent = 'VR start niet binnen deze ingesloten pagina. Open het spel los via de VR-link op de site en probeer opnieuw.';
     }
   });
 
@@ -854,7 +860,7 @@ function start() {
     // fit the game panels (about 2.0 m wide, 2.25 m tall incl. margin) to the screen
     const tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
     const distForHeight = (2.25 / 2) / tanHalf;
-    const distForWidth = (2.0 / 2) / (tanHalf * camera.aspect);
+    const distForWidth = (1.9 / 2) / (tanHalf * camera.aspect);
     const dist = Math.max(distForHeight, distForWidth);
     camera.position.set(0, 1.7, Z + dist);
     camera.lookAt(0, 1.72, Z);

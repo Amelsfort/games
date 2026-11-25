@@ -83,6 +83,7 @@
   }
   .game:nth-child(2) .emoji { animation-delay: -1s; }
   .game:nth-child(3) .emoji { animation-delay: -2s; }
+  .game:nth-child(4) .emoji { animation-delay: -0.5s; }
   @keyframes bob { 50% { transform: translateY(-8px); } }
   @media (prefers-reduced-motion: reduce) { .emoji { animation: none; } .game, .game:hover { transition: none; transform: none; } }
   .game h2 { margin: 6px 0 0; font-size: 1.7rem; font-weight: 900; }
@@ -126,7 +127,7 @@
       <div class="emoji">📚</div>
       <h2>Woorden</h2>
       <p id="wordDesc">Weet jij wat de woorden betekenen? Kies rustig of gooi sneeuwballen naar de sneeuwmonsters!</p>
-      <div class="tags"><span>Rustig</span><span id="monsterTag">⛄ Monsters</span><span>🥽 VR</span></div>
+      <div class="tags"><span>Rustig</span><span class="monster-tag">⛄ Monsters</span><span>🥽 VR</span></div>
       <span class="play">Spelen ▶</span>
     </a>
     <a class="game" href="capitals.html">
@@ -143,6 +144,13 @@
       <div class="tags"><span>🚸 Borden</span><span>🚗 Voorrang</span><span>🥽 VR</span></div>
       <span class="play">Spelen ▶</span>
     </a>
+    <a class="game" href="math.html">
+      <div class="emoji">🧮</div>
+      <h2>Rekenen</h2>
+      <p>Delen met een hulplijst, stap voor stap, net als op school. Of kun je het al uit je hoofd?</p>
+      <div class="tags"><span>📝 Hulplijst</span><span class="monster-tag">⛄ Monsters</span><span>🥽 VR</span></div>
+      <span class="play">Spelen ▶</span>
+    </a>
   </nav>
 
   <div class="themes" role="group" aria-label="Thema">Thema:</div>
@@ -152,7 +160,7 @@
   const W = THEME.words, page = THEME.page;
   document.querySelector('h1').textContent = W.heading;
   document.getElementById('wordDesc').textContent = `Weet jij wat de woorden betekenen? Kies rustig of gooi ${W.balls} naar de ${W.monsters.toLowerCase()}!`;
-  document.getElementById('monsterTag').textContent = `${W.monsterIcon} Monsters`;
+  document.querySelectorAll('.monster-tag').forEach(t => t.textContent = `${W.monsterIcon} Monsters`);
   document.querySelector('link[rel="icon"]').href = `data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>${THEME.icon}</text></svg>`;
 
   const css = document.createElement('style'); css.textContent = page.css; document.head.appendChild(css);
